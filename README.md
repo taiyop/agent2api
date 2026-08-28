@@ -65,18 +65,20 @@ Agent2API does not require an Agent provider API key. A dummy key is sufficient 
 
 ## Install and run
 
-```bash
-npm install
-npm run build
-agent2api serve --config ./examples/agent2api.config.json
-```
-
-Development checkout:
+The package is publish-ready but is not yet published to the npm registry. Run it from a source
+checkout:
 
 ```bash
 npm install
 npm run build
 node dist/cli/main.js serve --config ./examples/agent2api.config.json
+```
+
+After the package is published, global installation will be:
+
+```bash
+npm install -g agent2api
+agent2api serve --config ./agent2api.config.json
 ```
 
 The default bind address is `127.0.0.1:8080`. A minimal config is:
@@ -131,7 +133,19 @@ const response = await client.responses.create({
 });
 ```
 
-Both endpoints support `stream: true` over SSE. Because headless_core progress can contain process state, stdout, or stderr, it is never exposed as assistant text. The MVP sends heartbeat comments while the Agent runs, then emits the final returned output as a text delta, a finish event, and `[DONE]`. Client disconnects propagate through `AbortSignal` to headless_core.
+Both endpoints support the request field `stream: true` over SSE (`streaming: true` is not the
+OpenAI-compatible field). Because headless_core progress can contain process state, stdout, or
+stderr, it is never exposed as assistant text. The current implementation is completion-buffered
+streaming: it opens the SSE connection immediately, sends heartbeat comments while the Agent runs,
+then emits the final returned output as one text delta, a finish event, and `[DONE]`. It does not
+reduce time-to-first-text compared with a non-streaming request. Client disconnects propagate
+through `AbortSignal` to headless_core.
+
+For streaming requests, HTTP `200 OK` means that the SSE connection was established, not that Agent
+execution succeeded. A model-resolution or execution failure discovered afterward is sent as an SSE
+error event followed by `[DONE]`. True incremental text streaming can be added when a backend exposes
+a semantically safe assistant-output event such as `output.delta`; raw progress/stdout/stderr will
+not be treated as assistant output.
 
 ## Models and aliases
 
@@ -149,11 +163,24 @@ An optional final reasoning-effort suffix is also supported:
 codex/gpt-5.6-luna/low
 ```
 
-The recognized suffixes come from headless_core: `default`, `low`, `medium`, `high`, `xhigh`, and
-`max`. A suffix of `default`, or omitting the suffix entirely, leaves reasoning effort unspecified.
-If the request body also contains `reasoning.effort`, the explicit body value takes precedence.
-Recognized effort words in the final path segment are reserved and are removed from the model name
-before execution.
+The recognized suffix vocabulary comes from headless_core: `default`, `low`, `medium`, `high`,
+`xhigh`, and `max`. Individual Agents do not necessarily support every value; actual acceptance is
+delegated to the selected backend/CLI. A suffix of `default`, or omitting the suffix entirely, leaves
+reasoning effort unspecified. If the request body also contains `reasoning.effort`, the explicit body
+value takes precedence. Recognized effort words in the final path segment are reserved and are
+removed from the model name before execution.
+
+Agy exposes Gemini and other models through model slugs that may already contain an effort tier. Use
+the whole slug as the model portion:
+
+```text
+agy/gemini-3.7-flash-low    # correct: Agy model slug
+agy/gemini-3.7-flash/low    # rejected: generic effort suffix is not supported for Agy
+gemini/gemini-3.7-flash     # rejected: `gemini` is not a HeadlessCore Agent provider
+```
+
+This is Gemini-model execution through the authenticated Agy CLI. It does not add a Gemini external
+protocol adapter or a direct Gemini API connection.
 
 `model: "default"` remains unchanged when sent to headless_core, so the CLI's own default model is used without a provider model flag.
 
@@ -189,7 +216,10 @@ The OpenAI request field is decoded into Canonical IR first:
 }
 ```
 
-The HeadlessCore backend later forwards the canonical effort to `headless.run()`. Capability validation rejects reasoning on a configured model that does not support it; the default Agy model is marked unsupported.
+The HeadlessCore backend later forwards the canonical effort to `headless.run()`. Capability
+validation rejects reasoning on a model/Agent that does not support it. In the current HeadlessCore
+adapter, Agy does not accept the generic `reasoning.effort` field; choose an Agy model slug such as
+`gemini-3.7-flash-low` instead.
 
 ## Optional HTTP access authentication
 
@@ -206,6 +236,13 @@ This protects `Client → Agent2API`. It is unrelated to Agent CLI authenticatio
 ```
 
 Clients then send `Authorization: Bearer local-secret`. `/health` remains unauthenticated. Do not bind to a non-loopback interface without appropriate host/network controls and an HTTP bearer token.
+
+## Logging
+
+Requests are logged as structured records containing request ID, protocol, resolved model, backend,
+Agent, duration, and status. Prompt text, Agent output, authentication information, and environment
+variables are not logged by default. Ignored compatibility parameters are logged by parameter name
+only, never by value.
 
 ## Unsupported in the MVP
 
