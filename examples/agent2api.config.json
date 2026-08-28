@@ -1,0 +1,28 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8080,
+    "logging": true,
+    "heartbeatIntervalMs": 15000
+  },
+  "interfaces": [
+    {
+      "type": "openai",
+      "prefix": "/v1"
+    }
+  ],
+  "backends": {
+    "headless-core": {
+      "cwd": ".",
+      "timeoutMs": 120000
+    }
+  },
+  "models": {
+    "aliases": {
+      "default": "codex/default",
+      "smart": "claude/sonnet",
+      "luna": "codex/gpt-5.6-luna",
+      "luna-low": "codex/gpt-5.6-luna/low"
+    }
+  }
+}
