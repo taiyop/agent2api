@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import { llmMimicSurfacePlugin, openAIProtocol } from "llm-mimic-surface";
 import type { AgentBackend } from "../../backends/backend.js";
 import { HeadlessCoreBackend } from "../../backends/headless-core/backend.js";
 import { resolveHeadlessCoreModel } from "../../backends/headless-core/modelMapper.js";
@@ -6,9 +7,8 @@ import type { Agent2APIConfig } from "../../config/schema.js";
 import { StaticModelRegistry } from "../../core/modelRegistry.js";
 import { LabeledPromptRenderer } from "../../core/promptRenderer.js";
 import { AgentRunner } from "../../core/runner.js";
-import { OpenAIProtocolAdapter } from "../../protocols/openai/index.js";
+import { Agent2APISurfaceBackend } from "../../interfaces/llm-mimic-surface/backend.js";
 import { registerBearerAuth } from "./auth.js";
-import { createHttpRequestContext } from "./requestContext.js";
 
 export interface CreateServerOptions {
   readonly backends?: AgentBackend[];
@@ -19,22 +19,10 @@ export function createServer(config: Agent2APIConfig, options: CreateServerOptio
   const models = new StaticModelRegistry({ ...config.models, resolveUnknown: resolveHeadlessCoreModel });
   const backends = options.backends ?? [new HeadlessCoreBackend(config.backends["headless-core"])];
   const runner = new AgentRunner({ models, backends, promptRenderer: new LabeledPromptRenderer() });
+  const surfaceBackend = new Agent2APISurfaceBackend({ runner, models });
 
   server.get("/health", async () => ({ status: "ok" }));
   if (config.server.auth) registerBearerAuth(server, config.server.auth.bearerToken);
-
-  for (const entry of config.interfaces) {
-    if (entry.type === "openai") {
-      new OpenAIProtocolAdapter().registerRoutes({
-        server,
-        prefix: entry.prefix,
-        runner,
-        models,
-        heartbeatIntervalMs: config.server.heartbeatIntervalMs,
-        createRequestContext: createHttpRequestContext
-      });
-    }
-  }
 
   server.addHook("onResponse", async (request, reply) => {
     const body = request.body && typeof request.body === "object" && !Array.isArray(request.body)
@@ -63,6 +51,11 @@ export function createServer(config: Agent2APIConfig, options: CreateServerOptio
       duration: reply.elapsedTime,
       status: reply.statusCode
     }, "agent2api request");
+  });
+
+  server.register(llmMimicSurfacePlugin, {
+    backend: surfaceBackend,
+    protocols: config.interfaces.map((entry) => openAIProtocol({ prefix: entry.mountPath }))
   });
 
   return server;

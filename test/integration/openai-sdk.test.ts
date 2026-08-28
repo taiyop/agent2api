@@ -8,7 +8,7 @@ const servers: ReturnType<typeof createServer>[] = [];
 
 async function createClient() {
   const config = parseConfig({
-    server: { host: "127.0.0.1", port: 0, logging: false, heartbeatIntervalMs: 0 },
+    server: { host: "127.0.0.1", port: 0, logging: false },
     models: {
       entries: [{ id: "codex/default", backend: "fake", agent: "codex", model: "default" }],
       aliases: { default: "codex/default" }

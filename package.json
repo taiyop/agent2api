@@ -22,7 +22,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
@@ -46,7 +46,8 @@
   ],
   "dependencies": {
     "@headless-core/core": "^0.1.5",
-    "fastify": "^5.4.0"
+    "fastify": "^5.4.0",
+    "llm-mimic-surface": "github:taiyop/llm-mimic-surface#5d1a9fdfdcab04d44c4a38991f70f923eb1a5484"
   },
   "devDependencies": {
     "@types/node": "^20.19.0",

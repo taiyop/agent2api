@@ -6,13 +6,12 @@ export interface ServerConfig {
   readonly host: string;
   readonly port: number;
   readonly logging: boolean;
-  readonly heartbeatIntervalMs: number;
   readonly auth?: { readonly bearerToken: string };
 }
 
 export interface InterfaceConfig {
   readonly type: "openai";
-  readonly prefix: string;
+  readonly mountPath: string;
 }
 
 export interface HeadlessCoreConfig {
@@ -41,13 +40,12 @@ export function parseConfig(value: unknown, baseDirectory = process.cwd()): Agen
   const root = object(value ?? {}, "config");
   rejectUnknown(root, ["server", "interfaces", "backends", "models"], "config");
   const serverValue = object(root.server ?? {}, "server");
-  rejectUnknown(serverValue, ["host", "port", "logging", "heartbeatIntervalMs", "auth"], "server");
+  rejectUnknown(serverValue, ["host", "port", "logging", "auth"], "server");
   const auth = parseAuth(serverValue.auth);
   const server: ServerConfig = {
     host: optionalString(serverValue.host, "server.host") ?? "127.0.0.1",
     port: optionalInteger(serverValue.port, "server.port", 0, 65_535) ?? 8080,
     logging: optionalBoolean(serverValue.logging, "server.logging") ?? true,
-    heartbeatIntervalMs: optionalInteger(serverValue.heartbeatIntervalMs, "server.heartbeatIntervalMs", 0) ?? 15_000,
     ...(auth ? { auth } : {})
   };
 
@@ -75,11 +73,11 @@ export function parseConfig(value: unknown, baseDirectory = process.cwd()): Agen
 }
 
 function parseInterfaces(value: unknown): InterfaceConfig[] {
-  if (value === undefined) return [{ type: "openai", prefix: "/v1" }];
+  if (value === undefined) return [{ type: "openai", mountPath: "" }];
   if (!Array.isArray(value) || value.length === 0) invalid("interfaces must be a non-empty array", "interfaces");
   return value.map((item, index) => {
     const entry = object(item, `interfaces.${index}`);
-    rejectUnknown(entry, ["type", "prefix"], `interfaces.${index}`);
+    rejectUnknown(entry, ["type", "mountPath"], `interfaces.${index}`);
     if (entry.type !== "openai") {
       throw new Agent2APIError({
         code: "unsupported_feature",
@@ -87,11 +85,14 @@ function parseInterfaces(value: unknown): InterfaceConfig[] {
         param: `interfaces.${index}.type`
       });
     }
-    const prefix = optionalString(entry.prefix, `interfaces.${index}.prefix`) ?? "/v1";
-    if (!prefix.startsWith("/") || (prefix.length > 1 && prefix.endsWith("/"))) {
-      invalid("interface prefix must start with '/' and have no trailing slash", `interfaces.${index}.prefix`);
+    const mountPath = entry.mountPath ?? "";
+    if (typeof mountPath !== "string") {
+      invalid(`interfaces.${index}.mountPath must be a string`, `interfaces.${index}.mountPath`);
     }
-    return { type: "openai", prefix };
+    if (mountPath !== "" && (!mountPath.startsWith("/") || mountPath.endsWith("/"))) {
+      invalid("interface mountPath must be empty or start with '/' and have no trailing slash", `interfaces.${index}.mountPath`);
+    }
+    return { type: "openai", mountPath };
   });
 }
 

@@ -2,13 +2,12 @@
   "server": {
     "host": "127.0.0.1",
     "port": 8080,
-    "logging": true,
-    "heartbeatIntervalMs": 15000
+    "logging": true
   },
   "interfaces": [
     {
       "type": "openai",
-      "prefix": "/v1"
+      "mountPath": ""
     }
   ],
   "backends": {

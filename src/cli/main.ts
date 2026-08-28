@@ -14,7 +14,7 @@ async function main(argv: string[]): Promise<void> {
   const server = await startServer(config);
   process.stdout.write(`Agent2API listening on http://${config.server.host}:${config.server.port}\n\nInterfaces:\n`);
   for (const entry of config.interfaces) {
-    process.stdout.write(`  OpenAI: ${entry.prefix}\n`);
+    process.stdout.write(`  OpenAI: ${entry.mountPath}/v1\n`);
   }
   const shutdown = async () => {
     await server.close();

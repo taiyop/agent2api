@@ -14,6 +14,4 @@ export { StaticModelRegistry, type ModelRegistry, type UnknownModelResolver } fr
 export { LabeledPromptRenderer, type PromptRenderer } from "./core/promptRenderer.js";
 export { AgentRunner } from "./core/runner.js";
 export type { AgentCapabilities, AgentContent, AgentMessage, AgentModel, AgentRequest, AgentResponse } from "./core/types.js";
-export { OpenAIProtocolAdapter } from "./protocols/openai/index.js";
-export type { ProtocolAdapter, ProtocolRouteContext } from "./protocols/protocol.js";
 export { createServer, startServer, type CreateServerOptions } from "./transport/http/server.js";

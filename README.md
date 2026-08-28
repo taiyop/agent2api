@@ -2,7 +2,7 @@
 
 Expose authenticated local AI Agents through familiar LLM API interfaces.
 
-Agent2API is a small protocol gateway. It translates external API requests into a protocol-neutral Agent IR, resolves an Agent/model target, renders the complete message history as a deterministic prompt, and delegates execution to [`@headless-core/core`](https://github.com/taiyop/headless_core).
+Agent2API is an application host for local Agent APIs. It mounts [`llm-mimic-surface`](https://github.com/taiyop/llm-mimic-surface) on its HTTP server, adapts the protocol-neutral request to the Agent2API core, resolves an Agent/model target, renders the complete message history as a deterministic prompt, and delegates execution to [`@headless-core/core`](https://github.com/taiyop/headless_core).
 
 ```text
 OpenAI SDK
@@ -25,7 +25,13 @@ Agent2API never logs in to an Agent, reads credentials, refreshes tokens, or imp
 OpenAI / Anthropic / Gemini / Custom API
                   │
                   ▼
-        External Protocol Adapter
+          Agent2API HTTP Host
+                  │
+                  ▼
+        LLMMimicSurface Plugin
+                  │
+                  ▼
+      Agent2API Backend Adapter
                   │
                   ▼
       Canonical Agent IR + Runner
@@ -43,17 +49,17 @@ OpenAI / Anthropic / Gemini / Custom API
 The dependency direction is intentional:
 
 ```text
-protocols/* ─────→ core ←───── backends/*
-                      ↑
-                    server
+server ─────→ llm-mimic-surface
+  │
+  └────→ Agent2API Backend Adapter ─────→ core ←───── backends/*
 ```
 
 - `core` has no OpenAI, Fastify, or headless_core dependency.
-- `protocols/openai` has no headless_core dependency.
+- `llm-mimic-surface` has no headless_core dependency.
 - `backends/headless-core` has no OpenAI dependency.
 - Chat Completions and Responses use the same Canonical request and backend path.
 
-Protocol adapters are plugins implementing `ProtocolAdapter.registerRoutes()`. The MVP includes OpenAI-compatible routes; Anthropic, Gemini, and custom adapters can be added without changing a backend.
+Agent2API owns the Fastify instance, authentication, logging, configuration, listen address, and lifecycle. LLMMimicSurface registers the external protocol routes and owns their HTTP/SSE wire formats.
 
 ## Requirements
 
@@ -257,10 +263,9 @@ Agent2API explicitly returns `unsupported_feature` instead of silently dropping 
 An Agent CLI may use its own internal tools. That does not expose OpenAI tool calling to an API client.
 
 Unknown compatibility parameters that do not select one of these explicit features—such as
-`temperature`, `top_p`, or a client-specific extension—are ignored. Agent2API emits one structured
-`warn` log containing only the ignored parameter names; parameter values are not logged. This lets
-OpenAI-compatible clients add harmless fields without preventing Agent execution while preserving
-explicit rejection for tools, unsupported media, files, and persistent-conversation features.
+`temperature`, `top_p`, or a client-specific extension—are accepted by the external protocol
+surface where compatible and are not forwarded as execution controls to headless_core. Explicit
+tools, unsupported media, files, and persistent-conversation features remain rejected.
 
 ## Responsibility boundary
 
@@ -273,10 +278,17 @@ explicit rejection for tools, unsupported media, files, and persistent-conversat
 - handles model candidates
 - classifies execution failures
 
+`llm-mimic-surface`:
+
+- registers OpenAI-compatible routes on the Agent2API Fastify host
+- parses external requests into its protocol-neutral boundary contract
+- serializes HTTP responses, API errors, and SSE events
+- propagates client disconnects through `AbortSignal`
+
 Agent2API:
 
-- provides the HTTP server
-- implements external API protocol compatibility
+- owns the HTTP server, authentication, logging, configuration, and lifecycle
+- registers LLMMimicSurface on that server
 - defines Canonical Agent IR and events
 - resolves configured models and aliases
 - converts full message history into a prompt

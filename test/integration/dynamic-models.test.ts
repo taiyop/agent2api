@@ -18,26 +18,29 @@ describe("dynamic headless-core model resolution", () => {
       })
     };
     const config = parseConfig({
-      server: { logging: false, heartbeatIntervalMs: 0 },
+      server: { logging: false },
       models: { entries: [], aliases: {} }
     });
     const server = createServer(config, {
       backends: [new HeadlessCoreBackend({ cwd: "/project", headless })]
     });
     servers.push(server);
+    await server.listen({ host: "127.0.0.1", port: 0 });
+    const address = server.server.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP address");
 
-    const response = await server.inject({
+    const response = await fetch(`http://127.0.0.1:${address.port}/v1/chat/completions`, {
       method: "POST",
-      url: "/v1/chat/completions",
-      payload: {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
         model: "codex/gpt-5.6-luna/low",
         messages: [{ role: "user", content: "Hello" }],
         stream: true
-      }
+      })
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toContain("Luna response");
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Luna response");
     expect(captured[0]?.agent).toEqual({
       provider: "codex",
       model: "gpt-5.6-luna",
@@ -78,7 +81,7 @@ describe("dynamic headless-core model resolution", () => {
       }
     });
     expect(unsupported.statusCode).toBe(400);
-    expect(unsupported.json()).toMatchObject({ error: { code: "unsupported_feature", param: "reasoning.effort" } });
+    expect(unsupported.json()).toMatchObject({ error: { code: "unsupported_value", param: "reasoning.effort" } });
     expect(captured).toHaveLength(3);
   });
 });

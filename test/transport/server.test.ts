@@ -28,4 +28,18 @@ describe("HTTP transport", () => {
       headers: { authorization: "Bearer secret" }
     })).statusCode).toBe(200);
   });
+
+  it("mounts the OpenAI surface before its native /v1 paths", async () => {
+    const config = parseConfig({
+      server: { logging: false },
+      interfaces: [{ type: "openai", mountPath: "/api" }],
+      models: { entries: [{ id: "codex/default", backend: "fake", agent: "codex", model: "default" }] }
+    });
+    const server = createServer(config, { backends: [new FakeAgentBackend()] });
+    servers.push(server);
+
+    expect((await server.inject({ method: "GET", url: "/api/v1/models" })).statusCode).toBe(200);
+    expect((await server.inject({ method: "GET", url: "/v1/models" })).statusCode).toBe(404);
+    expect((await server.inject({ method: "GET", url: "/health" })).statusCode).toBe(200);
+  });
 });
