@@ -46,7 +46,12 @@ export interface Agent2APIConfig {
   readonly interfaces: InterfaceConfig[];
   readonly backends: { readonly "headless-core": HeadlessCoreConfig };
   readonly sessions: SessionsConfig;
-  readonly models: { readonly entries: AgentModel[]; readonly aliases: Record<string, string> };
+  readonly models: {
+    readonly entries: AgentModel[];
+    readonly aliases: Record<string, string>;
+    /** Whether `GET /v1/models` also lists `<agent>/<model>/<effort>` for each model. Defaults to true. */
+    readonly listEffortVariants: boolean;
+  };
 }
 
 /** The built-in catalog. `withoutEffort` lists the Agents that take no reasoning effort as configured. */
@@ -103,7 +108,7 @@ export function parseConfig(value: unknown, baseDirectory = process.cwd()): Agen
   };
 
   const modelsValue = object(root.models ?? {}, "models");
-  rejectUnknown(modelsValue, ["entries", "aliases"], "models");
+  rejectUnknown(modelsValue, ["entries", "aliases", "listEffortVariants"], "models");
   const entries = modelsValue.entries === undefined
     ? defaultModels(agentsWithoutEffort({ sessions: sessions.enabled, transports: backends["headless-core"].transports }))
     : parseModels(modelsValue.entries);
@@ -111,7 +116,9 @@ export function parseConfig(value: unknown, baseDirectory = process.cwd()): Agen
   const aliases: Record<string, string> = {};
   for (const [alias, target] of Object.entries(aliasesValue)) aliases[alias] = requiredString(target, `models.aliases.${alias}`);
 
-  return { server, interfaces, backends, sessions, models: { entries, aliases } };
+  const listEffortVariants = optionalBoolean(modelsValue.listEffortVariants, "models.listEffortVariants") ?? true;
+
+  return { server, interfaces, backends, sessions, models: { entries, aliases, listEffortVariants } };
 }
 
 function parseInterfaces(value: unknown): InterfaceConfig[] {

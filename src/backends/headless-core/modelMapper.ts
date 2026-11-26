@@ -1,4 +1,10 @@
-import { AGENT_IDS, getAvailableReasoningEffortOptions } from "@headless-core/core";
+import {
+  AGENT_IDS,
+  DEFAULT_MODEL_ID,
+  getAvailableModels,
+  getAvailableReasoningEffortOptions,
+  ModelAvailabilityError
+} from "@headless-core/core";
 import type { AgentExecutionRequest } from "../backend.js";
 import type { AgentModel } from "../../core/types.js";
 import { agentsWithoutEffort } from "./transports.js";
@@ -57,4 +63,44 @@ export function resolveHeadlessCoreModel(modelId: string, options: HeadlessCoreM
     ownedBy: "agent2api",
     ...((options.withoutEffort ?? CLI_WITHOUT_EFFORT).has(agent) ? { capabilities: { reasoningEffort: false } } : {})
   };
+}
+
+/**
+ * Lists the model candidates in headless_core's models.json (`~/.config/headless-core/models.json`,
+ * or `HEADLESS_CORE_MODELS_PATH`) as `<agent>/<model>` IDs. Agents with no candidates beyond
+ * `default` are left out, and a missing file lists nothing. The file is read on every call, so
+ * edits show up without a restart.
+ */
+export async function discoverHeadlessCoreModels(options: HeadlessCoreModelOptions = {}): Promise<AgentModel[]> {
+  const models: AgentModel[] = [];
+  for (const agent of AGENT_IDS) {
+    let candidates: string[];
+    try {
+      candidates = await getAvailableModels({ agent });
+    } catch (error) {
+      if (error instanceof ModelAvailabilityError && error.code === "MODELS_CONFIG_NOT_FOUND") return [];
+      throw error;
+    }
+    if (!candidates.some((model) => model !== DEFAULT_MODEL_ID)) continue;
+    for (const candidate of candidates) {
+      const model = resolveHeadlessCoreModel(`${agent}/${candidate}`, options);
+      if (model) models.push(model);
+    }
+  }
+  return models;
+}
+
+/**
+ * The `<id>/<effort>` forms of a headless-core model, one per effort headless_core recognizes for its
+ * Agent (except `default`). Models that already carry an effort, or whose Agent takes no effort
+ * (Agy, and Mistral Vibe on its CLI), have none. Whether a given model accepts an effort is still up to the Agent.
+ */
+export function headlessCoreEffortVariants(model: AgentModel): AgentModel[] {
+  if (model.target.backend !== "headless-core" || model.defaultReasoning || model.capabilities?.reasoningEffort === false) return [];
+  if (!HEADLESS_AGENT_IDS.has(model.target.agent)) return [];
+  const base = `${model.target.agent}/${model.target.model}`;
+  if (model.id !== base) return [];
+  return getAvailableReasoningEffortOptions({ agent: model.target.agent })
+    .filter((effort) => effort !== "default")
+    .flatMap((effort) => resolveHeadlessCoreModel(`${base}/${effort}`) ?? []);
 }

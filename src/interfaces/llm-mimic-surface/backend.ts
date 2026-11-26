@@ -44,7 +44,7 @@ export class Agent2APISurfaceBackend implements ExternalApiBackend {
   }
 
   async listModels(_context: InvocationContext): Promise<ModelInfo[]> {
-    return this.options.models.list().map((model) => ({
+    return (await this.options.models.listAvailable()).map((model) => ({
       id: model.id,
       ownedBy: model.ownedBy ?? "agent2api"
     }));

@@ -3,7 +3,11 @@ import { llmMimicSurfacePlugin, openAIProtocol } from "llm-mimic-surface";
 import type { AgentBackend } from "../../backends/backend.js";
 import { HeadlessCoreBackend } from "../../backends/headless-core/backend.js";
 import { agentsWithoutEffort } from "../../backends/headless-core/transports.js";
-import { resolveHeadlessCoreModel } from "../../backends/headless-core/modelMapper.js";
+import {
+  discoverHeadlessCoreModels,
+  headlessCoreEffortVariants,
+  resolveHeadlessCoreModel
+} from "../../backends/headless-core/modelMapper.js";
 import type { Agent2APIConfig } from "../../config/schema.js";
 import { ConversationStore } from "../../core/conversations.js";
 import { StaticModelRegistry } from "../../core/modelRegistry.js";
@@ -32,7 +36,12 @@ export function createServer(config: Agent2APIConfig, options: CreateServerOptio
   };
   const models = new StaticModelRegistry({
     ...config.models,
-    resolveUnknown: (modelId) => resolveHeadlessCoreModel(modelId, modelOptions)
+    resolveUnknown: (modelId) => resolveHeadlessCoreModel(modelId, modelOptions),
+    // headless_core's models.json describes what the headless-core backend can run.
+    ...(backends.some((backend) => backend.id === "headless-core")
+      ? { discover: () => discoverHeadlessCoreModels(modelOptions) }
+      : {}),
+    ...(config.models.listEffortVariants ? { variants: headlessCoreEffortVariants } : {})
   });
   const conversations = new ConversationStore({
     idleTimeoutMs: sessions.idleTimeoutSeconds * 1_000,
