@@ -1,9 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 
-export function registerBearerAuth(server: FastifyInstance, expectedToken: string): void {
+export function registerBearerAuth(
+  server: FastifyInstance,
+  expectedToken: string,
+  isPublicPath: (path: string) => boolean = (path) => path === "/health"
+): void {
   server.addHook("onRequest", async (request, reply) => {
-    if (request.url === "/health") return;
+    if (isPublicPath(request.url.split("?", 1)[0] ?? "")) return;
     const authorization = request.headers.authorization;
     const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
     if (!token || !safeEqual(token, expectedToken)) {

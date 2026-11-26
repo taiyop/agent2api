@@ -13,6 +13,8 @@ export interface ServerConfig {
   readonly host: string;
   readonly port: number;
   readonly logging: boolean;
+  /** Serves the Swagger UI at `/docs` and the OpenAPI document at `/openapi.json`. On by default. */
+  readonly docs: boolean;
   readonly auth?: { readonly bearerToken: string };
 }
 
@@ -73,12 +75,13 @@ export function parseConfig(value: unknown, baseDirectory = process.cwd()): Agen
   const root = object(value ?? {}, "config");
   rejectUnknown(root, ["server", "interfaces", "backends", "sessions", "models"], "config");
   const serverValue = object(root.server ?? {}, "server");
-  rejectUnknown(serverValue, ["host", "port", "logging", "auth"], "server");
+  rejectUnknown(serverValue, ["host", "port", "logging", "docs", "auth"], "server");
   const auth = parseAuth(serverValue.auth);
   const server: ServerConfig = {
     host: optionalString(serverValue.host, "server.host") ?? "127.0.0.1",
     port: optionalInteger(serverValue.port, "server.port", 0, 65_535) ?? 8080,
     logging: optionalBoolean(serverValue.logging, "server.logging") ?? true,
+    docs: optionalBoolean(serverValue.docs, "server.docs") ?? true,
     ...(auth ? { auth } : {})
   };
 

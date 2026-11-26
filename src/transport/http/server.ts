@@ -15,6 +15,7 @@ import { LabeledPromptRenderer } from "../../core/promptRenderer.js";
 import { AgentRunner } from "../../core/runner.js";
 import { Agent2APISurfaceBackend } from "../../interfaces/llm-mimic-surface/backend.js";
 import { registerBearerAuth } from "./auth.js";
+import { isDocsPath, registerDocs } from "./docs.js";
 
 export interface CreateServerOptions {
   readonly backends?: AgentBackend[];
@@ -61,7 +62,11 @@ export function createServer(config: Agent2APIConfig, options: CreateServerOptio
     await Promise.all(ownedBackends.map((backend) => backend.close()));
   });
   server.get("/health", async () => ({ status: "ok" }));
-  if (config.server.auth) registerBearerAuth(server, config.server.auth.bearerToken);
+  if (config.server.docs) registerDocs(server, { config, models });
+  if (config.server.auth) {
+    const docs = config.server.docs;
+    registerBearerAuth(server, config.server.auth.bearerToken, (path) => path === "/health" || (docs && isDocsPath(path)));
+  }
 
   server.addHook("onResponse", async (request, reply) => {
     const body = request.body && typeof request.body === "object" && !Array.isArray(request.body)
