@@ -5,6 +5,7 @@ import {
   type SandboxAgentId,
   type SandboxRules
 } from "../backends/headless-core/sandboxConfig.js";
+import { agentsWithoutEffort, PERSISTENT_TRANSPORTS, type HeadlessCoreTransport } from "../backends/headless-core/transports.js";
 import { Agent2APIError } from "../core/errors.js";
 import type { AgentModel } from "../core/types.js";
 
@@ -25,28 +26,47 @@ export interface HeadlessCoreConfig {
   readonly timeoutMs: number;
   /** On by default; `false` runs the Agent CLIs without a sandbox. */
   readonly sandbox: HeadlessCoreSandboxConfig | false;
+  /** Transport per Agent. Agents left out use their default one (all but Agy keep running) while `sessions.enabled`. */
+  readonly transports: Partial<Record<SandboxAgentId, HeadlessCoreTransport>>;
+  /** Agents started when the server starts, so even the first request finds them running. */
+  readonly prewarm: SandboxAgentId[];
+}
+
+export interface SessionsConfig {
+  /** Keeps Agents running and conversations open between requests. On by default. */
+  readonly enabled: boolean;
+  /** Closes a conversation, or a running Agent with none, after this long unused. */
+  readonly idleTimeoutSeconds: number;
+  /** The most conversations kept open at once; the least recently used one is closed first. */
+  readonly maxConversations: number;
 }
 
 export interface Agent2APIConfig {
   readonly server: ServerConfig;
   readonly interfaces: InterfaceConfig[];
   readonly backends: { readonly "headless-core": HeadlessCoreConfig };
+  readonly sessions: SessionsConfig;
   readonly models: { readonly entries: AgentModel[]; readonly aliases: Record<string, string> };
 }
 
-const DEFAULT_MODELS: AgentModel[] = [
-  model("codex/default", "codex", "default"),
-  model("claude/default", "claude", "default"),
-  model("claude/sonnet", "claude", "sonnet"),
-  model("claude/opus", "claude", "opus"),
-  model("claude/haiku", "claude", "haiku"),
-  model("grok/default", "grok", "default"),
-  model("agy/default", "agy", "default", { reasoningEffort: false })
-];
+/** The built-in catalog. `withoutEffort` lists the Agents that take no reasoning effort as configured. */
+function defaultModels(withoutEffort: ReadonlySet<string>): AgentModel[] {
+  return [
+    ["codex/default", "codex", "default"],
+    ["claude/default", "claude", "default"],
+    ["claude/sonnet", "claude", "sonnet"],
+    ["claude/opus", "claude", "opus"],
+    ["claude/haiku", "claude", "haiku"],
+    ["grok/default", "grok", "default"],
+    ["agy/default", "agy", "default"],
+    ["mistral/default", "mistral", "default"]
+  ].map(([id, agent, modelId]) =>
+    model(id!, agent!, modelId!, withoutEffort.has(agent!) ? { reasoningEffort: false } : undefined));
+}
 
 export function parseConfig(value: unknown, baseDirectory = process.cwd()): Agent2APIConfig {
   const root = object(value ?? {}, "config");
-  rejectUnknown(root, ["server", "interfaces", "backends", "models"], "config");
+  rejectUnknown(root, ["server", "interfaces", "backends", "sessions", "models"], "config");
   const serverValue = object(root.server ?? {}, "server");
   rejectUnknown(serverValue, ["host", "port", "logging", "auth"], "server");
   const auth = parseAuth(serverValue.auth);
@@ -61,25 +81,37 @@ export function parseConfig(value: unknown, baseDirectory = process.cwd()): Agen
   const backendsValue = object(root.backends ?? {}, "backends");
   rejectUnknown(backendsValue, ["headless-core"], "backends");
   const headlessValue = object(backendsValue["headless-core"] ?? {}, "backends.headless-core");
-  rejectUnknown(headlessValue, ["cwd", "timeoutMs", "sandbox"], "backends.headless-core");
+  rejectUnknown(headlessValue, ["cwd", "timeoutMs", "sandbox", "transports", "prewarm"], "backends.headless-core");
   const configuredCwd = optionalString(headlessValue.cwd, "backends.headless-core.cwd") ?? ".";
   const sandbox = parseSandbox(headlessValue.sandbox, baseDirectory, "backends.headless-core.sandbox");
   const backends = {
     "headless-core": {
       cwd: path.resolve(baseDirectory, configuredCwd),
       timeoutMs: optionalInteger(headlessValue.timeoutMs, "backends.headless-core.timeoutMs", 1) ?? 120_000,
-      sandbox
+      sandbox,
+      transports: parseTransports(headlessValue.transports, "backends.headless-core.transports"),
+      prewarm: parsePrewarm(headlessValue.prewarm, "backends.headless-core.prewarm")
     }
+  };
+
+  const sessionsValue = object(root.sessions ?? {}, "sessions");
+  rejectUnknown(sessionsValue, ["enabled", "idleTimeoutSeconds", "maxConversations"], "sessions");
+  const sessions: SessionsConfig = {
+    enabled: optionalBoolean(sessionsValue.enabled, "sessions.enabled") ?? true,
+    idleTimeoutSeconds: optionalInteger(sessionsValue.idleTimeoutSeconds, "sessions.idleTimeoutSeconds", 1) ?? 600,
+    maxConversations: optionalInteger(sessionsValue.maxConversations, "sessions.maxConversations", 0, 1_000) ?? 8
   };
 
   const modelsValue = object(root.models ?? {}, "models");
   rejectUnknown(modelsValue, ["entries", "aliases"], "models");
-  const entries = modelsValue.entries === undefined ? DEFAULT_MODELS : parseModels(modelsValue.entries);
+  const entries = modelsValue.entries === undefined
+    ? defaultModels(agentsWithoutEffort({ sessions: sessions.enabled, transports: backends["headless-core"].transports }))
+    : parseModels(modelsValue.entries);
   const aliasesValue = object(modelsValue.aliases ?? { default: "codex/default" }, "models.aliases");
   const aliases: Record<string, string> = {};
   for (const [alias, target] of Object.entries(aliasesValue)) aliases[alias] = requiredString(target, `models.aliases.${alias}`);
 
-  return { server, interfaces, backends, models: { entries, aliases } };
+  return { server, interfaces, backends, sessions, models: { entries, aliases } };
 }
 
 function parseInterfaces(value: unknown): InterfaceConfig[] {
@@ -136,6 +168,32 @@ function parseCapabilities(value: unknown, param: string): AgentModel["capabilit
   const output: Record<string, boolean> = {};
   for (const [key, item] of Object.entries(input)) output[key] = optionalBoolean(item, `${param}.${key}`) ?? false;
   return output;
+}
+
+function parseTransports(value: unknown, param: string): HeadlessCoreConfig["transports"] {
+  if (value === undefined) return {};
+  const input = object(value, param);
+  rejectUnknown(input, SANDBOX_AGENT_IDS, param);
+  const transports: Partial<Record<SandboxAgentId, HeadlessCoreTransport>> = {};
+  for (const agent of SANDBOX_AGENT_IDS) {
+    if (input[agent] === undefined) continue;
+    const allowed = ["cli", PERSISTENT_TRANSPORTS[agent]];
+    if (typeof input[agent] !== "string" || !allowed.includes(input[agent] as string)) {
+      invalid(`${param}.${agent} must be ${allowed.map((entry) => `'${entry}'`).join(" or ")}`, `${param}.${agent}`);
+    }
+    transports[agent] = input[agent] as HeadlessCoreTransport;
+  }
+  return transports;
+}
+
+function parsePrewarm(value: unknown, param: string): SandboxAgentId[] {
+  const agents = optionalStringArray(value, param) ?? [];
+  agents.forEach((agent, index) => {
+    if (!(SANDBOX_AGENT_IDS as readonly string[]).includes(agent)) {
+      invalid(`${param}.${index} must be one of ${SANDBOX_AGENT_IDS.join(", ")}`, `${param}.${index}`);
+    }
+  });
+  return [...new Set(agents)] as SandboxAgentId[];
 }
 
 function parseSandbox(value: unknown, baseDirectory: string, param: string): HeadlessCoreSandboxConfig | false {

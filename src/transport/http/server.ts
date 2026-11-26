@@ -2,8 +2,10 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { llmMimicSurfacePlugin, openAIProtocol } from "llm-mimic-surface";
 import type { AgentBackend } from "../../backends/backend.js";
 import { HeadlessCoreBackend } from "../../backends/headless-core/backend.js";
+import { agentsWithoutEffort } from "../../backends/headless-core/transports.js";
 import { resolveHeadlessCoreModel } from "../../backends/headless-core/modelMapper.js";
 import type { Agent2APIConfig } from "../../config/schema.js";
+import { ConversationStore } from "../../core/conversations.js";
 import { StaticModelRegistry } from "../../core/modelRegistry.js";
 import { LabeledPromptRenderer } from "../../core/promptRenderer.js";
 import { AgentRunner } from "../../core/runner.js";
@@ -16,14 +18,37 @@ export interface CreateServerOptions {
 
 export function createServer(config: Agent2APIConfig, options: CreateServerOptions = {}): FastifyInstance {
   const server = Fastify({ logger: config.server.logging });
-  const models = new StaticModelRegistry({ ...config.models, resolveUnknown: resolveHeadlessCoreModel });
+  const sessions = config.sessions;
   // Backends passed in by the caller stay owned by the caller; only the default one is closed here.
-  const ownedBackends = options.backends ? [] : [new HeadlessCoreBackend(config.backends["headless-core"])];
+  const ownedBackends = options.backends ? [] : [new HeadlessCoreBackend({
+    ...config.backends["headless-core"],
+    sessions: sessions.enabled ? { idleTimeoutMs: sessions.idleTimeoutSeconds * 1_000 } : false,
+    onWarning: (message) => server.log.warn(message)
+  })];
   const backends = options.backends ?? ownedBackends;
-  const runner = new AgentRunner({ models, backends, promptRenderer: new LabeledPromptRenderer() });
+  // Mistral takes a reasoning effort only while it runs on ACP.
+  const modelOptions = {
+    withoutEffort: agentsWithoutEffort({ sessions: sessions.enabled, transports: config.backends["headless-core"].transports })
+  };
+  const models = new StaticModelRegistry({
+    ...config.models,
+    resolveUnknown: (modelId) => resolveHeadlessCoreModel(modelId, modelOptions)
+  });
+  const conversations = new ConversationStore({
+    idleTimeoutMs: sessions.idleTimeoutSeconds * 1_000,
+    maxConversations: sessions.enabled ? sessions.maxConversations : 0
+  });
+  const runner = new AgentRunner({
+    models,
+    backends,
+    promptRenderer: new LabeledPromptRenderer(),
+    conversations,
+    keepSessions: sessions.enabled
+  });
   const surfaceBackend = new Agent2APISurfaceBackend({ runner, models });
 
   server.addHook("onClose", async () => {
+    await conversations.close();
     await Promise.all(ownedBackends.map((backend) => backend.close()));
   });
   server.get("/health", async () => ({ status: "ok" }));

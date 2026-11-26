@@ -9,13 +9,43 @@ describe("configuration", () => {
     expect(config.interfaces).toEqual([{ type: "openai", mountPath: "" }]);
     expect(config.backends["headless-core"].cwd).toBe(path.resolve("/config/project"));
     expect(config.models.entries.map((entry) => entry.id)).toEqual(expect.arrayContaining([
-      "codex/default", "claude/sonnet", "grok/default", "agy/default"
+      "codex/default", "claude/sonnet", "grok/default", "agy/default", "mistral/default"
     ]));
   });
 
   it.each(["env", "command", "binary", "args"])("rejects forbidden backend configuration field %s", (field) => {
     expect(() => parseConfig({ backends: { "headless-core": { [field]: "unsafe" } } }))
       .toThrowError(expect.objectContaining({ code: "invalid_request", param: `backends.headless-core.${field}` }));
+  });
+
+  it("keeps sessions on by default and validates transports and prewarm", () => {
+    const defaults = parseConfig({});
+    expect(defaults.sessions).toEqual({ enabled: true, idleTimeoutSeconds: 600, maxConversations: 8 });
+    expect(defaults.backends["headless-core"]).toMatchObject({ transports: {}, prewarm: [] });
+
+    const config = parseConfig({
+      sessions: { enabled: false, idleTimeoutSeconds: 30, maxConversations: 0 },
+      backends: { "headless-core": { transports: { grok: "cli", codex: "app-server" }, prewarm: ["codex", "codex", "claude"] } }
+    });
+    expect(config.sessions).toEqual({ enabled: false, idleTimeoutSeconds: 30, maxConversations: 0 });
+    expect(config.backends["headless-core"]).toMatchObject({ transports: { grok: "cli", codex: "app-server" }, prewarm: ["codex", "claude"] });
+
+    expect(() => parseConfig({ backends: { "headless-core": { transports: { codex: "acp" } } } }))
+      .toThrowError(expect.objectContaining({ param: "backends.headless-core.transports.codex", message: expect.stringContaining("'cli' or 'app-server'") }));
+    expect(() => parseConfig({ backends: { "headless-core": { prewarm: ["gemini"] } } }))
+      .toThrowError(expect.objectContaining({ param: "backends.headless-core.prewarm.0" }));
+    expect(() => parseConfig({ sessions: { ttl: 5 } }))
+      .toThrowError(expect.objectContaining({ param: "sessions.ttl" }));
+  });
+
+  it("lets the built-in mistral model take an effort only while Mistral runs on ACP", () => {
+    const mistral = (input: Record<string, unknown>) =>
+      parseConfig(input).models.entries.find((entry) => entry.id === "mistral/default")?.capabilities;
+    expect(mistral({})).toBeUndefined();
+    expect(mistral({ sessions: { enabled: false } })).toEqual({ reasoningEffort: false });
+    expect(mistral({ backends: { "headless-core": { transports: { mistral: "cli" } } } })).toEqual({ reasoningEffort: false });
+    expect(parseConfig({}).models.entries.find((entry) => entry.id === "agy/default")?.capabilities)
+      .toEqual({ reasoningEffort: false });
   });
 
   it("rejects the removed server heartbeat interval field", () => {

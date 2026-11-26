@@ -17,11 +17,28 @@ export interface AgentReasoningOptions {
   readonly effort?: string;
 }
 
+/**
+ * - `auto`: continue a kept conversation when the history matches one, otherwise start a new one.
+ * - `new`: always start a new conversation.
+ */
+export type ConversationMode = "auto" | "new";
+
+export interface AgentConversationOptions {
+  /** Continues from this earlier response (Responses API `previous_response_id`). */
+  readonly previousResponseId?: string;
+  readonly mode?: ConversationMode;
+  /** False keeps neither the conversation nor the response (Responses API `store: false`). */
+  readonly store?: boolean;
+  /** Remembers the response so a later `previousResponseId` can name it. */
+  readonly recordResponse?: boolean;
+}
+
 export interface AgentRequest {
   readonly requestId: string;
   readonly model: string;
   readonly messages: AgentMessage[];
   readonly reasoning?: AgentReasoningOptions;
+  readonly conversation?: AgentConversationOptions;
   readonly metadata?: Record<string, unknown>;
   readonly extensions?: Record<string, unknown>;
 }

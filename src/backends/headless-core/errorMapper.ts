@@ -1,3 +1,4 @@
+import { EffortError } from "@headless-core/core";
 import { Agent2APIError } from "../../core/errors.js";
 
 const HEADLESS_FAILURE_KINDS = new Set(["network", "rate_limit", "agent_stopped", "unknown"]);
@@ -17,6 +18,16 @@ export function mapHeadlessCoreError(
       code: "cancelled",
       message: "Agent execution was cancelled",
       retryable: false,
+      cause: error
+    });
+  }
+
+  if (error instanceof EffortError) {
+    // A problem with the request itself, such as an effort the model does not take: say which ones it does.
+    return new Agent2APIError({
+      code: error.code === "UNSUPPORTED_EFFORT" ? "unsupported_feature" : "invalid_request",
+      message: error.message,
+      param: "reasoning.effort",
       cause: error
     });
   }

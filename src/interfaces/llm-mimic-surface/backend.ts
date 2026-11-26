@@ -89,12 +89,25 @@ export class Agent2APISurfaceBackend implements ExternalApiBackend {
   }
 }
 
+/** Request header that picks how a request uses kept conversations: `auto` (default) or `new`. */
+export const CONVERSATION_HEADER = "x-agent2api-conversation";
+
 function toAgentRequest(request: InvocationRequest, context: InvocationContext): AgentRequest {
+  const responses = request.source.endpoint === "responses";
+  const payload = isRecord(request.native?.payload) ? request.native.payload : {};
+  const previousResponseId = responses && typeof payload.previous_response_id === "string" ? payload.previous_response_id : undefined;
+  // For Chat Completions, LLMMimicSurface copies the system messages into `instructions` and keeps
+  // them in `messages`. For Responses, it appends `previous_response_id=...`; use the client's own.
+  const instructions = !responses
+    ? undefined
+    : previousResponseId !== undefined
+      ? typeof payload.instructions === "string" ? payload.instructions : undefined
+      : request.instructions;
   const messages: AgentMessage[] = [];
-  if (request.instructions?.trim()) {
+  if (instructions?.trim()) {
     messages.push({
       role: "system",
-      content: [{ type: "text", text: request.instructions.trim() }]
+      content: [{ type: "text", text: instructions.trim() }]
     });
   }
   messages.push(...request.messages.map(toAgentMessage));
@@ -105,9 +118,30 @@ function toAgentRequest(request: InvocationRequest, context: InvocationContext):
     ...(request.reasoning?.effort !== undefined
       ? { reasoning: { effort: request.reasoning.effort } }
       : {}),
+    conversation: {
+      mode: conversationMode(context.headers[CONVERSATION_HEADER]),
+      ...(previousResponseId !== undefined ? { previousResponseId } : {}),
+      ...(responses && payload.store === false ? { store: false } : {}),
+      recordResponse: responses
+    },
     ...(request.metadata ? { metadata: request.metadata } : {}),
     ...(request.extensions ? { extensions: request.extensions } : {})
   };
+}
+
+function conversationMode(value: string | string[] | undefined): "auto" | "new" {
+  const mode = (Array.isArray(value) ? value[0] : value)?.trim().toLowerCase();
+  if (mode === undefined || mode === "" || mode === "auto") return "auto";
+  if (mode === "new") return "new";
+  throw new BackendError({
+    code: "invalid_request",
+    message: `Header '${CONVERSATION_HEADER}' must be 'auto' or 'new'`,
+    param: CONVERSATION_HEADER
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function toAgentMessage(message: Message): AgentMessage {
