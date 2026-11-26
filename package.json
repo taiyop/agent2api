@@ -23,6 +23,9 @@
   ],
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
+    "start": "npm run build && node dist/cli/main.js serve --config ./examples/agent2api.config.json",
+    "serve": "npm run build && node dist/cli/main.js serve",
+    "dev": "bun src/cli/main.ts serve --config ./examples/agent2api.config.json",
     "bench": "node tools/bench/server.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
