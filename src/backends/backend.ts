@@ -26,4 +26,6 @@ export interface AgentBackend {
   readonly id: string;
   execute(request: AgentExecutionRequest, context: AgentExecutionContext): Promise<AgentExecutionResult>;
   capabilities(): AgentCapabilities;
+  /** Releases resources held by the backend when the server shuts down. */
+  close?(): void | Promise<void>;
 }

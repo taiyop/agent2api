@@ -4,7 +4,10 @@ export {
   HeadlessCoreBackend,
   resolveHeadlessCoreModel,
   type HeadlessCoreBackendOptions,
-  type HeadlessCoreLike
+  type HeadlessCoreLike,
+  type HeadlessCoreSandboxConfig,
+  type SandboxRules,
+  type SrtSandboxConfig
 } from "./backends/headless-core/index.js";
 export { loadConfig } from "./config/load.js";
 export { parseConfig, type Agent2APIConfig } from "./config/schema.js";

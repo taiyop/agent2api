@@ -1,4 +1,10 @@
 import path from "node:path";
+import {
+  SANDBOX_AGENT_IDS,
+  type HeadlessCoreSandboxConfig,
+  type SandboxAgentId,
+  type SandboxRules
+} from "../backends/headless-core/sandboxConfig.js";
 import { Agent2APIError } from "../core/errors.js";
 import type { AgentModel } from "../core/types.js";
 
@@ -17,6 +23,8 @@ export interface InterfaceConfig {
 export interface HeadlessCoreConfig {
   readonly cwd: string;
   readonly timeoutMs: number;
+  /** On by default; `false` runs the Agent CLIs without a sandbox. */
+  readonly sandbox: HeadlessCoreSandboxConfig | false;
 }
 
 export interface Agent2APIConfig {
@@ -53,12 +61,14 @@ export function parseConfig(value: unknown, baseDirectory = process.cwd()): Agen
   const backendsValue = object(root.backends ?? {}, "backends");
   rejectUnknown(backendsValue, ["headless-core"], "backends");
   const headlessValue = object(backendsValue["headless-core"] ?? {}, "backends.headless-core");
-  rejectUnknown(headlessValue, ["cwd", "timeoutMs"], "backends.headless-core");
+  rejectUnknown(headlessValue, ["cwd", "timeoutMs", "sandbox"], "backends.headless-core");
   const configuredCwd = optionalString(headlessValue.cwd, "backends.headless-core.cwd") ?? ".";
+  const sandbox = parseSandbox(headlessValue.sandbox, baseDirectory, "backends.headless-core.sandbox");
   const backends = {
     "headless-core": {
       cwd: path.resolve(baseDirectory, configuredCwd),
-      timeoutMs: optionalInteger(headlessValue.timeoutMs, "backends.headless-core.timeoutMs", 1) ?? 120_000
+      timeoutMs: optionalInteger(headlessValue.timeoutMs, "backends.headless-core.timeoutMs", 1) ?? 120_000,
+      sandbox
     }
   };
 
@@ -126,6 +136,78 @@ function parseCapabilities(value: unknown, param: string): AgentModel["capabilit
   const output: Record<string, boolean> = {};
   for (const [key, item] of Object.entries(input)) output[key] = optionalBoolean(item, `${param}.${key}`) ?? false;
   return output;
+}
+
+function parseSandbox(value: unknown, baseDirectory: string, param: string): HeadlessCoreSandboxConfig | false {
+  if (value === undefined) return { type: "srt" };
+  if (value === false) return false;
+  if (value === true || value === null || typeof value !== "object" || Array.isArray(value)) {
+    invalid(`${param} must be an object, or false to disable the sandbox`, param);
+  }
+  const input = value as Record<string, unknown>;
+  rejectUnknown(input, ["type", "network", "filesystem", "enableWeakerNetworkIsolation", "agents"], param);
+  if (input.type !== undefined && input.type !== "srt") {
+    invalid(`${param}.type must be 'srt'`, `${param}.type`);
+  }
+  const agents: Partial<Record<SandboxAgentId, SandboxRules>> = {};
+  if (input.agents !== undefined) {
+    const agentsValue = object(input.agents, `${param}.agents`);
+    rejectUnknown(agentsValue, SANDBOX_AGENT_IDS, `${param}.agents`);
+    for (const agent of SANDBOX_AGENT_IDS) {
+      if (agentsValue[agent] === undefined) continue;
+      const agentParam = `${param}.agents.${agent}`;
+      const agentValue = object(agentsValue[agent], agentParam);
+      rejectUnknown(agentValue, ["network", "filesystem", "enableWeakerNetworkIsolation"], agentParam);
+      agents[agent] = parseSandboxRules(agentValue, baseDirectory, agentParam);
+    }
+  }
+  return {
+    type: "srt",
+    ...parseSandboxRules(input, baseDirectory, param),
+    ...(Object.keys(agents).length > 0 ? { agents } : {})
+  };
+}
+
+function parseSandboxRules(input: Record<string, unknown>, baseDirectory: string, param: string): SandboxRules {
+  const rules: { -readonly [K in keyof SandboxRules]: SandboxRules[K] } = {};
+  if (input.network !== undefined) {
+    const network = object(input.network, `${param}.network`);
+    rejectUnknown(network, ["allowedDomains", "deniedDomains", "allowLocalBinding"], `${param}.network`);
+    const allowedDomains = optionalStringArray(network.allowedDomains, `${param}.network.allowedDomains`);
+    const deniedDomains = optionalStringArray(network.deniedDomains, `${param}.network.deniedDomains`);
+    const allowLocalBinding = optionalBoolean(network.allowLocalBinding, `${param}.network.allowLocalBinding`);
+    rules.network = {
+      ...(allowedDomains ? { allowedDomains } : {}),
+      ...(deniedDomains ? { deniedDomains } : {}),
+      ...(allowLocalBinding !== undefined ? { allowLocalBinding } : {})
+    };
+  }
+  if (input.filesystem !== undefined) {
+    const filesystem = object(input.filesystem, `${param}.filesystem`);
+    const keys = ["denyRead", "allowRead", "allowWrite", "denyWrite"] as const;
+    rejectUnknown(filesystem, keys, `${param}.filesystem`);
+    const result: Record<string, string[]> = {};
+    for (const key of keys) {
+      const paths = optionalStringArray(filesystem[key], `${param}.filesystem.${key}`);
+      if (paths) result[key] = paths.map((entry) => resolveSandboxPath(entry, baseDirectory));
+    }
+    rules.filesystem = result;
+  }
+  const weaker = optionalBoolean(input.enableWeakerNetworkIsolation, `${param}.enableWeakerNetworkIsolation`);
+  if (weaker !== undefined) rules.enableWeakerNetworkIsolation = weaker;
+  return rules;
+}
+
+/** Relative sandbox paths are resolved from the config directory, like `cwd`; `~` is left for srt to expand. */
+function resolveSandboxPath(entry: string, baseDirectory: string): string {
+  if (entry === "~" || entry.startsWith("~/") || path.isAbsolute(entry)) return entry;
+  return path.resolve(baseDirectory, entry);
+}
+
+function optionalStringArray(value: unknown, param: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) invalid(`${param} must be an array of strings`, param);
+  return value.map((item, index) => requiredString(item, `${param}.${index}`));
 }
 
 function parseAuth(value: unknown): ServerConfig["auth"] {

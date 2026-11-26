@@ -2,7 +2,16 @@ import { Agent2APIError } from "../../core/errors.js";
 
 const HEADLESS_FAILURE_KINDS = new Set(["network", "rate_limit", "agent_stopped", "unknown"]);
 
-export function mapHeadlessCoreError(error: unknown, signal: AbortSignal): Agent2APIError {
+export interface HeadlessCoreErrorContext {
+  /** True when the Agent CLI ran inside the srt sandbox. */
+  readonly sandboxed?: boolean;
+}
+
+export function mapHeadlessCoreError(
+  error: unknown,
+  signal: AbortSignal,
+  context: HeadlessCoreErrorContext = {}
+): Agent2APIError {
   if (signal.aborted) {
     return new Agent2APIError({
       code: "cancelled",
@@ -16,6 +25,14 @@ export function mapHeadlessCoreError(error: unknown, signal: AbortSignal): Agent
   const lower = message.toLowerCase();
   const kind = findFailureKind(error);
 
+  if (context.sandboxed && lower.includes("bind: operation not permitted")) {
+    return new Agent2APIError({
+      code: "backend_unavailable",
+      message: "The sandbox blocked the Agent CLI from listening on a local port. "
+        + "To allow it, set backends.headless-core.sandbox.agents.<agent>.network.allowLocalBinding to true.",
+      cause: error
+    });
+  }
   if (kind === "rate_limit" || lower.includes("rate limit") || lower.includes("too many requests")) {
     return new Agent2APIError({ code: "rate_limit", message: "Agent CLI rate limit reached", cause: error });
   }

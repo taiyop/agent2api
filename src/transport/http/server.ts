@@ -17,10 +17,15 @@ export interface CreateServerOptions {
 export function createServer(config: Agent2APIConfig, options: CreateServerOptions = {}): FastifyInstance {
   const server = Fastify({ logger: config.server.logging });
   const models = new StaticModelRegistry({ ...config.models, resolveUnknown: resolveHeadlessCoreModel });
-  const backends = options.backends ?? [new HeadlessCoreBackend(config.backends["headless-core"])];
+  // Backends passed in by the caller stay owned by the caller; only the default one is closed here.
+  const ownedBackends = options.backends ? [] : [new HeadlessCoreBackend(config.backends["headless-core"])];
+  const backends = options.backends ?? ownedBackends;
   const runner = new AgentRunner({ models, backends, promptRenderer: new LabeledPromptRenderer() });
   const surfaceBackend = new Agent2APISurfaceBackend({ runner, models });
 
+  server.addHook("onClose", async () => {
+    await Promise.all(ownedBackends.map((backend) => backend.close()));
+  });
   server.get("/health", async () => ({ status: "ok" }));
   if (config.server.auth) registerBearerAuth(server, config.server.auth.bearerToken);
 

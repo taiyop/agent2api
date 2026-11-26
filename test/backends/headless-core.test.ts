@@ -59,6 +59,16 @@ describe("HeadlessCoreBackend", () => {
 });
 
 describe("mapHeadlessCoreError", () => {
+  it("explains a sandbox local-binding denial only when the Agent ran sandboxed", () => {
+    const signal = new AbortController().signal;
+    const error = new Error("Failed to start: listen tcp 127.0.0.1:0: bind: operation not permitted");
+    expect(mapHeadlessCoreError(error, signal, { sandboxed: true })).toMatchObject({
+      code: "backend_unavailable",
+      message: expect.stringContaining("allowLocalBinding")
+    });
+    expect(mapHeadlessCoreError(error, signal).message).not.toContain("allowLocalBinding");
+  });
+
   it("maps rate limits, timeouts, and authentication failures", () => {
     const signal = new AbortController().signal;
     expect(mapHeadlessCoreError({ cause: { error: { kind: "rate_limit" } } }, signal)).toMatchObject({ code: "rate_limit" });

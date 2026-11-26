@@ -50,4 +50,45 @@ describe("configuration", () => {
         param: "interfaces.0.mountPath"
       }));
   });
+  it("turns the srt sandbox on by default and off only with false", () => {
+    expect(parseConfig({}).backends["headless-core"].sandbox).toEqual({ type: "srt" });
+    expect(parseConfig({ backends: { "headless-core": { sandbox: false } } }).backends["headless-core"].sandbox)
+      .toBe(false);
+    expect(parseConfig({ backends: { "headless-core": { sandbox: { agents: { agy: {} } } } } }).backends["headless-core"].sandbox)
+      .toEqual({ type: "srt", agents: { agy: {} } });
+  });
+
+  it("parses an srt sandbox and resolves relative paths from the config directory", () => {
+    const config = parseConfig({
+      backends: {
+        "headless-core": {
+          sandbox: {
+            type: "srt",
+            network: { allowedDomains: ["example.com"] },
+            filesystem: { allowWrite: ["out", "~/cache", "/abs"] },
+            agents: { agy: { network: { allowLocalBinding: false }, enableWeakerNetworkIsolation: true } }
+          }
+        }
+      }
+    }, "/config");
+    expect(config.backends["headless-core"].sandbox).toEqual({
+      type: "srt",
+      network: { allowedDomains: ["example.com"] },
+      filesystem: { allowWrite: [path.resolve("/config/out"), "~/cache", "/abs"] },
+      agents: { agy: { network: { allowLocalBinding: false }, enableWeakerNetworkIsolation: true } }
+    });
+  });
+
+  it.each([
+    [true, "backends.headless-core.sandbox"],
+    [null, "backends.headless-core.sandbox"],
+    [{ type: "docker" }, "backends.headless-core.sandbox.type"],
+    [{ type: "srt", agents: { gemini: {} } }, "backends.headless-core.sandbox.agents.gemini"],
+    [{ type: "srt", network: { allowedDomains: "example.com" } }, "backends.headless-core.sandbox.network.allowedDomains"],
+    [{ type: "srt", filesystem: { allowExec: [] } }, "backends.headless-core.sandbox.filesystem.allowExec"],
+    [{ type: "srt", settingsPath: "./srt.json" }, "backends.headless-core.sandbox.settingsPath"]
+  ])("rejects invalid sandbox configuration %j", (sandbox, param) => {
+    expect(() => parseConfig({ backends: { "headless-core": { sandbox } } }))
+      .toThrowError(expect.objectContaining({ code: "invalid_request", param }));
+  });
 });

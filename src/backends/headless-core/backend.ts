@@ -4,6 +4,13 @@ import { TEXT_AGENT_CAPABILITIES } from "../../core/capabilities.js";
 import type { AgentBackend, AgentExecutionContext, AgentExecutionRequest, AgentExecutionResult } from "../backend.js";
 import { mapHeadlessCoreError } from "./errorMapper.js";
 import { mapAgentSpec } from "./modelMapper.js";
+import {
+  prepareDirectLaunchers,
+  prepareSrtSandbox,
+  type HeadlessCoreSandboxConfig,
+  type PreparedLaunchers,
+  type PreparedSandbox
+} from "./sandbox.js";
 
 export interface HeadlessCoreLike {
   run(options: HeadlessRunOptions): Promise<string>;
@@ -12,15 +19,34 @@ export interface HeadlessCoreLike {
 export interface HeadlessCoreBackendOptions {
   readonly cwd: string;
   readonly timeoutMs?: number;
+  /**
+   * Runs every Agent CLI inside an OS-level sandbox. Defaults to `{ type: "srt" }`; pass `false` to
+   * run without one. Ignored when `headless` is given.
+   */
+  readonly sandbox?: HeadlessCoreSandboxConfig | false;
   readonly headless?: HeadlessCoreLike;
 }
 
 export class HeadlessCoreBackend implements AgentBackend {
   readonly id = "headless-core";
   readonly #headless: HeadlessCoreLike;
+  readonly #sandbox: PreparedSandbox | undefined;
+  readonly #launchers: PreparedLaunchers | undefined;
 
   constructor(private readonly options: HeadlessCoreBackendOptions) {
-    this.#headless = options.headless ?? createConfiguredHeadlessCore(options);
+    if (options.headless) {
+      this.#headless = options.headless;
+    } else {
+      const sandbox = options.sandbox ?? { type: "srt" };
+      this.#sandbox = sandbox ? prepareSrtSandbox({ config: sandbox, cwd: options.cwd }) : undefined;
+      this.#launchers = this.#sandbox ? undefined : prepareDirectLaunchers();
+      this.#headless = createConfiguredHeadlessCore(options, this.#sandbox?.env ?? this.#launchers?.env);
+    }
+  }
+
+  close(): void {
+    this.#sandbox?.dispose();
+    this.#launchers?.dispose();
   }
 
   capabilities(): AgentCapabilities {
@@ -40,14 +66,15 @@ export class HeadlessCoreBackend implements AgentBackend {
       });
       return { output };
     } catch (error) {
-      throw mapHeadlessCoreError(error, context.signal);
+      throw mapHeadlessCoreError(error, context.signal, { sandboxed: this.#sandbox !== undefined });
     }
   }
 }
 
-function createConfiguredHeadlessCore(options: HeadlessCoreBackendOptions): HeadlessCore {
+function createConfiguredHeadlessCore(options: HeadlessCoreBackendOptions, env: NodeJS.ProcessEnv | undefined): HeadlessCore {
   return createHeadlessCore({
     cwd: options.cwd,
+    ...(env ? { env } : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {})
   });
 }
