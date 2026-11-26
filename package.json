@@ -23,6 +23,7 @@
   ],
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
+    "bench": "node tools/bench/server.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",

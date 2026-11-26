@@ -1,0 +1,1128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent2API Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Zen+Maru+Gothic:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1c2836;
+    --muted: #677788;
+    --faint: #f1f5f9;
+    --line: #e2e9f0;
+    --link: #1575c4;
+    --sky: #d9eeff;
+    --sun: #ffb526;
+    --sun-soft: #fff3d1;
+    --leaf-soft: #def3e6;
+    --ok: #1f8a55;
+    --bad: #cc3d33;
+    --bad-soft: #fde5e2;
+    --warn: #a8700a;
+    --round: "Zen Maru Gothic", "Inter", system-ui, sans-serif;
+    --sans: "Inter", system-ui, -apple-system, "Hiragino Sans", sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10161d;
+      --fg: #e4ebf2;
+      --muted: #8d9cad;
+      --faint: #18212b;
+      --line: #26323f;
+      --link: #74bfff;
+      --sky: #17344d;
+      --sun: #ffc247;
+      --sun-soft: #3a2e0e;
+      --leaf-soft: #173326;
+      --ok: #5fd197;
+      --bad: #ff7d72;
+      --bad-soft: #3b1d1b;
+      --warn: #ffc247;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10161d;
+    --fg: #e4ebf2;
+    --muted: #8d9cad;
+    --faint: #18212b;
+    --line: #26323f;
+    --link: #74bfff;
+    --sky: #17344d;
+    --sun: #ffc247;
+    --sun-soft: #3a2e0e;
+    --leaf-soft: #173326;
+    --ok: #5fd197;
+    --bad: #ff7d72;
+    --bad-soft: #3b1d1b;
+    --warn: #ffc247;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  code { font-family: var(--mono); font-size: 0.85em; background: var(--faint); padding: 1px 6px; border-radius: 6px; }
+  p { margin: 0; }
+  h1, h2 { margin: 0; font-family: var(--round); font-weight: 700; text-wrap: balance; }
+
+  .page {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 56px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 72px;
+  }
+
+  /* ---------- intro ---------- */
+  .intro { display: flex; flex-direction: column; gap: 20px; }
+  .top { display: flex; align-items: center; gap: 12px; }
+  .mark { width: 44px; height: 44px; flex: 0 0 auto; }
+  .mark .rays { transform-origin: 22px 22px; animation: spin 40s linear infinite; }
+  .name { font-family: var(--round); font-weight: 700; font-size: 18px; }
+  .health {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: var(--faint);
+    color: var(--muted);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    transition: background 0.25s ease, color 0.25s ease;
+  }
+  .health:has(.led[data-state="ok"]) { background: var(--leaf-soft); color: var(--ok); }
+  .health:has(.led[data-state="bad"]) { background: var(--bad-soft); color: var(--bad); }
+  .intro h1 { font-size: 30px; line-height: 1.45; }
+  .intro p { color: var(--muted); line-height: 1.9; }
+  .intro p code { color: var(--fg); }
+
+  /* ---------- sections ---------- */
+  section { display: flex; flex-direction: column; gap: 20px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .section-head h2 { font-size: 20px; }
+  .section-head .side { display: flex; align-items: center; gap: 10px; }
+  .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .hint { color: var(--muted); font-size: 13px; line-height: 1.8; }
+
+  /* ---------- pills: tabs and segmented choices ---------- */
+  .tabs, .seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--faint); border-radius: 999px; }
+  .tabs button, .seg span {
+    display: block;
+    border: 0;
+    background: transparent;
+    padding: 5px 14px;
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.6;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .tabs button:hover, .seg label:hover span { color: var(--fg); }
+  .tabs button[aria-selected="true"], .seg input:checked + span { background: var(--fg); color: var(--bg); }
+  .seg label { display: block; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg input:focus-visible + span, .tabs button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+  /* ---------- form ---------- */
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .row > .field { flex: 1 1 200px; }
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .field > span:first-child, .field > label:first-child { color: var(--muted); font-size: 13px; font-weight: 500; }
+  input[type="text"], input[type="password"], select, textarea {
+    width: 100%;
+    background: var(--faint);
+    border: 1px solid transparent;
+    border-radius: 12px;
+    padding: 9px 14px;
+    font-size: 15px;
+    line-height: 1.6;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  }
+  input[type="text"], input[type="password"], select { height: 42px; }
+  textarea { resize: vertical; }
+  input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.8; }
+  input[type="text"]:focus, input[type="password"]:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--link);
+    background: var(--bg);
+    box-shadow: 0 0 0 3px var(--sky);
+  }
+  #modelInput, #modelSelect, #providerSelect, #smokeModels { font-family: var(--mono); font-size: 14px; }
+  .count.bad { color: var(--bad); }
+  .select { position: relative; display: block; }
+  .select select { appearance: none; padding-right: 36px; cursor: pointer; }
+  .select::after {
+    content: "";
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    border-right: 1.5px solid var(--muted);
+    border-bottom: 1.5px solid var(--muted);
+    transform: translateY(-70%) rotate(45deg);
+    pointer-events: none;
+  }
+  .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; user-select: none; }
+  .switch input {
+    appearance: none;
+    margin: 0;
+    width: 34px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--line);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  .switch input::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--bg);
+    transition: transform 0.2s ease;
+  }
+  .switch input:checked { background: var(--fg); }
+  .switch input:checked::before { transform: translateX(14px); }
+  .switch input:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  .options { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+
+  /* ---------- buttons ---------- */
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .spacer { flex: 1; }
+  .btn {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    border-radius: 999px;
+    padding: 7px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.6;
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+  }
+  .btn:hover:not(:disabled) { background: var(--faint); transform: translateY(-1px); }
+  .btn.primary { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+  .btn.primary:hover:not(:disabled) { background: var(--fg); opacity: 0.88; }
+  .btn.small { padding: 4px 12px; font-size: 13px; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  kbd { font-family: var(--sans); font-size: 12px; opacity: 0.6; margin-left: 6px; }
+
+  /* ---------- models ---------- */
+  .models { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .models button {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  }
+  .models button:hover { background: var(--sky); border-color: var(--sky); transform: translateY(-1px); }
+  .models button[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+  .models .empty { color: var(--muted); font-size: 14px; }
+
+  /* ---------- result ---------- */
+  .panel { display: flex; flex-direction: column; gap: 28px; }
+  .readout { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 0; }
+  .readout div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .readout dt { color: var(--muted); font-size: 12.5px; }
+  .readout dd { margin: 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #outStatus.ok { color: var(--ok); }
+  #outStatus.bad { color: var(--bad); }
+  .answer {
+    background: var(--faint);
+    border-radius: 22px;
+    padding: 20px 22px;
+    min-height: 96px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 15.5px;
+    line-height: 1.85;
+  }
+  .answer.placeholder { color: var(--muted); }
+  .answer.error { background: var(--bad-soft); color: var(--bad); }
+  .caret {
+    display: inline-block;
+    width: 2px;
+    height: 1.1em;
+    margin-left: 1px;
+    vertical-align: text-bottom;
+    background: var(--sun);
+    animation: blink 1s steps(1) infinite;
+  }
+  .raw summary {
+    cursor: pointer;
+    list-style: none;
+    color: var(--muted);
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .raw summary::-webkit-details-marker { display: none; }
+  .raw summary::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.2s ease;
+  }
+  .raw[open] summary::before { transform: rotate(45deg); }
+  .raw summary:hover { color: var(--fg); }
+  pre.log {
+    margin: 12px 0 0;
+    background: var(--faint);
+    border-radius: 14px;
+    padding: 14px 16px;
+    max-height: 360px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  pre.log:empty::before { content: "Nothing sent yet."; color: var(--muted); }
+  pre.log .c { color: var(--muted); }
+  pre.log .e { color: var(--link); }
+
+  /* ---------- smoke test ---------- */
+  .summary { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .summary b { color: var(--fg); font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  table.results { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .results th {
+    text-align: left;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 0 12px 8px 0;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .results td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+  .results td.model { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+  .results td.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+  .results td.out { color: var(--muted); overflow-wrap: anywhere; min-width: 140px; }
+  .results td.out.bad { color: var(--bad); }
+  .results td.empty { color: var(--muted); text-align: center; padding: 32px 0; border-bottom: 0; }
+  .verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 10px;
+    border-radius: 999px;
+    background: var(--faint);
+    color: var(--muted);
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .verdict:has(.led[data-state="run"]) { background: var(--sky); color: var(--link); }
+  .verdict:has(.led[data-state="ok"]) { background: var(--leaf-soft); color: var(--ok); }
+  .verdict:has(.led[data-state="warn"]) { background: var(--sun-soft); color: var(--warn); }
+  .verdict:has(.led[data-state="bad"]) { background: var(--bad-soft); color: var(--bad); }
+
+  /* ---------- status dot ---------- */
+  .led { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.5; flex: 0 0 auto; }
+  .led[data-state] { opacity: 1; }
+  .led[data-state="run"] { animation: pulse 1.2s ease-in-out infinite; }
+
+  /* ---------- connection ---------- */
+  .facts { display: grid; grid-template-columns: 72px minmax(0, 1fr); margin: 0; border-top: 1px solid var(--line); }
+  .facts dt, .facts dd { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .facts dt { color: var(--muted); font-size: 13px; }
+  .facts dd { margin: 0; font-family: var(--mono); font-size: 13.5px; overflow-wrap: anywhere; }
+
+  footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--muted); font-size: 13px; }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translate(-50%, 8px);
+    background: var(--fg);
+    color: var(--bg);
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  @media (max-width: 560px) {
+    .page { padding-top: 32px; gap: 60px; }
+    .intro h1 { font-size: 26px; }
+    .readout { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 16px; }
+    .answer { padding: 18px; border-radius: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="intro">
+    <div class="top">
+      <svg class="mark" viewBox="0 0 44 44" aria-hidden="true">
+        <g class="rays" stroke="var(--sun)" stroke-width="3" stroke-linecap="round">
+          <line x1="22" y1="3" x2="22" y2="8"/><line x1="22" y1="36" x2="22" y2="41"/>
+          <line x1="3" y1="22" x2="8" y2="22"/><line x1="36" y1="22" x2="41" y2="22"/>
+          <line x1="8.6" y1="8.6" x2="12.1" y2="12.1"/><line x1="31.9" y1="31.9" x2="35.4" y2="35.4"/>
+          <line x1="8.6" y1="35.4" x2="12.1" y2="31.9"/><line x1="31.9" y1="12.1" x2="35.4" y2="8.6"/>
+        </g>
+        <circle cx="22" cy="22" r="9" fill="var(--sun)"/>
+      </svg>
+      <span class="name">Agent2API Bench</span>
+      <span class="health" title="GET /health, checked every 5 seconds">
+        <span class="led" id="healthLed"></span>
+        <span id="healthReading">checking</span>
+      </span>
+    </div>
+    <h1>See how your Agents answer.</h1>
+    <p>Send one request, or check every model at once. This page talks to the bench, and the bench forwards to <code id="targetLabel">…</code>.</p>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <h2>Recent models</h2>
+      <div class="side">
+        <span class="count" id="modelCount"></span>
+        <button class="btn small" id="refreshModels" type="button">Refresh</button>
+      </div>
+    </div>
+    <ul class="models" id="modelList"></ul>
+    <p class="hint">The last 10 models you sent a request to from this browser. Pick one to use it again, or choose a provider and model below.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Try it</h2>
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" aria-controls="panelRequest" id="tabRequest">Request</button>
+        <button role="tab" aria-selected="false" aria-controls="panelSmoke" id="tabSmoke">Smoke test</button>
+      </div>
+    </div>
+
+    <!-- single request -->
+    <div class="panel" id="panelRequest" role="tabpanel">
+      <div class="stack">
+        <div class="options">
+          <div class="seg" role="radiogroup" aria-label="Endpoint">
+            <label><input type="radio" name="endpoint" value="chat" checked><span>Chat Completions</span></label>
+            <label><input type="radio" name="endpoint" value="responses"><span>Responses</span></label>
+          </div>
+          <label class="switch"><input type="checkbox" id="streamInput"> Stream</label>
+        </div>
+        <div class="row">
+          <div class="field" style="flex: 1 1 150px;">
+            <label for="providerSelect">Provider</label>
+            <span class="select">
+              <select id="providerSelect"><option value="claude">claude</option></select>
+            </span>
+          </div>
+          <div class="field" style="flex: 2 1 240px;">
+            <label for="modelSelect" id="modelLabel">Model</label>
+            <span class="select" id="modelSelectWrap">
+              <select id="modelSelect"><option value="claude/default">default</option></select>
+            </span>
+            <input type="text" id="modelInput" value="claude/default" spellcheck="false" hidden
+              aria-labelledby="modelLabel" placeholder="agent/model, such as codex/gpt-5.6-luna">
+          </div>
+          <label class="field">
+            <span>Reasoning effort</span>
+            <span class="select">
+              <select id="effortInput">
+                <option value="">Not set</option>
+              </select>
+            </span>
+          </label>
+        </div>
+        <label class="field">
+          <span>System</span>
+          <textarea id="systemInput" rows="2" placeholder="Optional"></textarea>
+        </label>
+        <label class="field">
+          <span>User</span>
+          <textarea id="userInput" rows="4">Reply with just: ok</textarea>
+        </label>
+        <div class="actions">
+          <button class="btn primary" id="sendBtn" type="button">Send<kbd>⌘↵</kbd></button>
+          <button class="btn" id="cancelBtn" type="button" disabled>Cancel</button>
+          <span class="spacer"></span>
+          <button class="btn small" id="curlBtn" type="button">Copy as curl</button>
+        </div>
+      </div>
+
+      <dl class="readout">
+        <div><dt>Status</dt><dd id="outStatus">—</dd></div>
+        <div><dt>Headers</dt><dd id="outHeaders">—</dd></div>
+        <div><dt>First text</dt><dd id="outFirst">—</dd></div>
+        <div><dt>Total</dt><dd id="outTotal">—</dd></div>
+        <div><dt>Keep-alives</dt><dd id="outBeats">—</dd></div>
+      </dl>
+      <div class="answer placeholder" id="outAnswer">The Agent's reply appears here.</div>
+      <details class="raw" id="rawBox">
+        <summary>Raw response</summary>
+        <pre class="log" id="outLog"></pre>
+      </details>
+    </div>
+
+    <!-- smoke test -->
+    <div class="panel" id="panelSmoke" role="tabpanel" hidden>
+      <div class="stack">
+        <div class="row">
+          <label class="field" style="flex: 1 1 220px;">
+            <span>Models, one per line</span>
+            <textarea id="smokeModels" rows="5" spellcheck="false"></textarea>
+          </label>
+          <div class="stack" style="flex: 2 1 280px;">
+            <label class="field">
+              <span>Prompt</span>
+              <input type="text" id="smokePrompt" value="Reply with just: ok">
+            </label>
+            <label class="field">
+              <span>Pass when the reply contains</span>
+              <input type="text" id="smokeExpect" value="ok">
+            </label>
+          </div>
+        </div>
+        <div class="options">
+          <div class="seg" role="radiogroup" aria-label="Smoke test endpoint">
+            <label><input type="radio" name="smokeEndpoint" value="chat" checked><span>Chat</span></label>
+            <label><input type="radio" name="smokeEndpoint" value="responses"><span>Responses</span></label>
+          </div>
+          <label class="switch"><input type="checkbox" id="smokeStream"> Stream</label>
+          <label class="switch"><input type="checkbox" id="smokeParallel" checked> Parallel</label>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="smokeRun" type="button">Run smoke test</button>
+          <button class="btn" id="smokeStop" type="button" disabled>Stop</button>
+          <button class="btn small" id="smokeFill" type="button">Use all listed models</button>
+          <span class="spacer"></span>
+          <span class="summary" id="smokeSummary"></span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="results">
+          <thead><tr><th>Result</th><th>Model</th><th>HTTP</th><th>Time</th><th>Reply or error</th></tr></thead>
+          <tbody id="smokeRows"><tr><td colspan="5" class="empty">Run the test to check every model end to end.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Connection</h2></div>
+    <dl class="facts">
+      <dt>URL</dt><dd id="factTarget">…</dd>
+      <dt>Base</dt><dd id="factBase">…</dd>
+      <dt>Token</dt><dd id="factToken">…</dd>
+    </dl>
+    <label class="field">
+      <span>Bearer token override</span>
+      <input type="password" id="tokenInput" autocomplete="off" placeholder="Leave empty to use the bench's token">
+    </label>
+    <p class="hint">A token you type here stays in this tab and is never saved.</p>
+  </section>
+
+  <footer>Agent2API Bench listens on 127.0.0.1 only.</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const state = { config: null, models: [], effort: "", requestController: null, smokeControllers: [] };
+
+const store = {
+  get(key, fallback) { try { const v = localStorage.getItem("a2a-bench:" + key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem("a2a-bench:" + key, JSON.stringify(value)); } catch {} }
+};
+
+function toast(message) {
+  const el = $("toast");
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.remove("show"), 1800);
+}
+function ms(value) { return value == null ? "—" : value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`; }
+function escapeHtml(text) { return String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function radio(name) { return document.querySelector(`input[name="${name}"]:checked`).value; }
+function benchHeaders(json) {
+  const headers = {};
+  if (json) headers["content-type"] = "application/json";
+  const token = $("tokenInput").value.trim();
+  if (token) headers["x-agent2api-token"] = token;
+  return headers;
+}
+
+/* ---------- target & health ---------- */
+async function loadConfig() {
+  const response = await fetch("/bench/config");
+  state.config = await response.json();
+  const { target, basePath, tokenConfigured } = state.config;
+  $("targetLabel").textContent = target + basePath;
+  $("factTarget").textContent = target;
+  $("factBase").textContent = (basePath || "") + "/v1";
+  $("factToken").textContent = tokenConfigured ? "configured in bench" : "none";
+}
+
+async function checkHealth() {
+  const started = performance.now();
+  try {
+    const response = await fetch("/proxy/health", { headers: benchHeaders(false) });
+    const elapsed = performance.now() - started;
+    if (response.ok) {
+      $("healthLed").dataset.state = "ok";
+      $("healthReading").textContent = `up · ${ms(elapsed)}`;
+    } else {
+      const body = await response.json().catch(() => null);
+      $("healthLed").dataset.state = "bad";
+      $("healthReading").textContent = body?.error?.message ? `down · ${body.error.message}` : `HTTP ${response.status}`;
+    }
+  } catch (error) {
+    $("healthLed").dataset.state = "bad";
+    $("healthReading").textContent = "bench unreachable";
+  }
+}
+
+async function loadModels() {
+  const count = $("modelCount");
+  count.className = "count";
+  count.textContent = "Loading…";
+  try {
+    const response = await fetch("/proxy/v1/models", { headers: benchHeaders(false) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
+    state.models = (body.data ?? []).map((entry) => entry.id);
+    count.textContent = `${baseModels().length} listed`;
+  } catch (error) {
+    state.models = [];
+    count.className = "count bad";
+    count.textContent = error.message;
+  }
+  syncModel();
+  if (!$("smokeModels").value.trim()) fillSmokeModels(true);
+}
+
+/* ---------- provider and model choice ---------- */
+const CUSTOM = "__custom__";
+const ALIASES = "__aliases__";
+const EFFORTS = new Set(["default", "none", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const FALLBACK_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+/**
+ * `<agent>/<model>/<effort>` IDs are not offered as models: the model is picked
+ * on its own and the effort goes in the Reasoning effort field.
+ */
+function isEffortVariant(id) {
+  const parts = id.split("/");
+  return parts.length >= 3 && EFFORTS.has(parts[parts.length - 1]);
+}
+function baseOf(id) { return isEffortVariant(id) ? id.slice(0, id.lastIndexOf("/")) : id; }
+function baseModels() { return state.models.filter((id) => !isEffortVariant(id)); }
+function providerOf(id) { return id.includes("/") ? id.slice(0, id.indexOf("/")) : ALIASES; }
+function modelsOf(provider) { return baseModels().filter((id) => providerOf(id) === provider); }
+
+/**
+ * Efforts a model takes, read from its listed effort IDs. A listed model with none
+ * while others have them does not take an effort (agy, or mistral on its CLI); null says so.
+ * Aliases, typed IDs, and lists without effort IDs get the common set.
+ */
+function effortsOf(model) {
+  const own = state.models.filter((id) => isEffortVariant(id) && baseOf(id) === model)
+    .map((id) => id.slice(id.lastIndexOf("/") + 1));
+  if (own.length) return own;
+  const known = state.models.includes(model) && providerOf(model) !== ALIASES;
+  return known && state.models.some(isEffortVariant) ? null : FALLBACK_EFFORTS;
+}
+
+function renderEfforts(model) {
+  const select = $("effortInput");
+  const efforts = effortsOf(model);
+  const wanted = select.value || state.effort || "";
+  select.innerHTML = efforts
+    ? '<option value="">Not set</option>' + efforts.map((e) => `<option>${escapeHtml(e)}</option>`).join("")
+    : '<option value="">Not available for this model</option>';
+  select.disabled = !efforts;
+  select.value = efforts?.includes(wanted) ? wanted : "";
+}
+
+/** Older saved forms and history may hold `<model>/<effort>`: split it into both fields. */
+function splitEffortId() {
+  const current = $("modelInput").value.trim();
+  const base = baseOf(current);
+  if (base === current || !state.models.includes(base)) return;
+  $("modelInput").value = base;
+  state.effort = current.slice(base.length + 1);
+  $("effortInput").innerHTML = `<option>${escapeHtml(state.effort)}</option>`;
+  $("effortInput").value = state.effort;
+}
+
+/** Redraws both selects from the model ID in the text field, which is what gets sent. */
+function syncModel() {
+  splitEffortId();
+  const current = $("modelInput").value.trim();
+  const providers = [...new Set(baseModels().map(providerOf))];
+  const listed = state.models.includes(current);
+  const provider = listed ? providerOf(current) : CUSTOM;
+  $("providerSelect").innerHTML = providers.map((id) => {
+    const label = id === ALIASES ? "Aliases" : id;
+    const total = modelsOf(id).length;
+    return `<option value="${escapeHtml(id)}">${escapeHtml(label)} (${total})</option>`;
+  }).join("") + `<option value="${CUSTOM}">Type a model ID…</option>`;
+  $("providerSelect").value = provider;
+  renderModelSelect(provider, current);
+  $("modelSelectWrap").hidden = provider === CUSTOM;
+  $("modelInput").hidden = provider !== CUSTOM;
+  renderEfforts(current);
+  renderRecent();
+}
+
+function renderModelSelect(provider, current) {
+  if (provider === CUSTOM) { $("modelSelect").innerHTML = ""; return; }
+  const prefix = provider === ALIASES ? "" : `${provider}/`;
+  $("modelSelect").innerHTML = modelsOf(provider).map((id) => {
+    const label = id.slice(prefix.length);
+    return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+  }).join("");
+  $("modelSelect").value = current;
+}
+
+/** A provider's starting model: the one used last, else its default, else its first. */
+function preferredModel(provider) {
+  const models = modelsOf(provider);
+  return recentModels().find((id) => models.includes(id))
+    ?? models.find((id) => id === `${provider}/default`)
+    ?? models[0];
+}
+
+function useModel(id) {
+  $("modelInput").value = id;
+  syncModel();
+  saveForm();
+}
+
+/* ---------- recent models (this browser only) ---------- */
+const RECENT_LIMIT = 10;
+function recentModels() {
+  const value = store.get("recent", []);
+  if (!Array.isArray(value)) return [];
+  const ids = value.filter((id) => typeof id === "string").map(baseOf);
+  return [...new Set(ids)].slice(0, RECENT_LIMIT);
+}
+function rememberModel(id) {
+  store.set("recent", [id, ...recentModels().filter((entry) => entry !== id)].slice(0, RECENT_LIMIT));
+  renderRecent();
+}
+function renderRecent() {
+  const current = $("modelInput").value.trim();
+  const recent = recentModels();
+  $("modelList").innerHTML = recent.length
+    ? recent.map((id) =>
+        `<li><button type="button" data-model="${escapeHtml(id)}" aria-pressed="${id === current}">${escapeHtml(id)}</button></li>`
+      ).join("")
+    : '<li class="empty">Nothing yet. Models you send a request to show up here.</li>';
+}
+
+/* ---------- request plumbing ---------- */
+function buildRequest({ endpoint, model, system, user, effort, stream }) {
+  const reasoning = effort ? { reasoning: { effort } } : {};
+  if (endpoint === "chat") {
+    const messages = [];
+    if (system) messages.push({ role: "system", content: system });
+    messages.push({ role: "user", content: user });
+    return { path: "/v1/chat/completions", body: { model, messages, stream, ...reasoning } };
+  }
+  const input = system ? [{ role: "system", content: system }, { role: "user", content: user }] : user;
+  return { path: "/v1/responses", body: { model, input, stream, ...reasoning } };
+}
+
+function textFromJson(endpoint, json) {
+  if (endpoint === "chat") return json?.choices?.[0]?.message?.content ?? "";
+  if (typeof json?.output_text === "string") return json.output_text;
+  return (json?.output ?? []).flatMap((item) => item.content ?? [])
+    .filter((part) => part.type === "output_text").map((part) => part.text).join("");
+}
+
+function deltaFromEvent(endpoint, json) {
+  if (endpoint === "chat") return json?.choices?.[0]?.delta?.content ?? "";
+  return json?.type === "response.output_text.delta" ? json.delta ?? "" : "";
+}
+
+function errorFromEvent(json) {
+  if (json?.error) return json.error.message ?? JSON.stringify(json.error);
+  if (json?.type === "error") return json.message ?? "error";
+  if (json?.type === "response.failed") return json.response?.error?.message ?? "response failed";
+  return null;
+}
+
+/**
+ * Sends one request through the bench and reports progress. Resolves with the outcome; never throws
+ * for HTTP or Agent errors, only reports them.
+ */
+async function runRequest(options, hooks = {}) {
+  const { path, body } = buildRequest(options);
+  const result = { status: null, text: "", error: null, headersMs: null, firstMs: null, totalMs: null, beats: 0 };
+  const started = performance.now();
+  const log = hooks.log ?? (() => {});
+  log(`POST ${path}\n${JSON.stringify(body, null, 2)}\n`, "c");
+  let response;
+  try {
+    response = await fetch("/proxy" + path, {
+      method: "POST", headers: benchHeaders(true), body: JSON.stringify(body), signal: options.signal
+    });
+  } catch (error) {
+    result.error = error.name === "AbortError" ? "Cancelled" : `Bench unreachable: ${error.message}`;
+    result.totalMs = performance.now() - started;
+    return result;
+  }
+  result.status = response.status;
+  result.headersMs = performance.now() - started;
+  hooks.progress?.(result);
+  const contentType = response.headers.get("content-type") ?? "";
+  try {
+    if (contentType.includes("text/event-stream")) {
+      // Chat Completions ends with [DONE]; Responses ends with a terminal response.* event.
+      let finished = false;
+      await readSse(response, (event) => {
+        if (event.comment !== undefined) {
+          result.beats++;
+          log(`: ${event.comment}`, "c");
+          hooks.progress?.(result);
+          return;
+        }
+        log((event.event ? `event: ${event.event}\n` : "") + `data: ${event.data}`, event.event ? "e" : "");
+        if (event.data === "[DONE]") { finished = true; return; }
+        let json;
+        try { json = JSON.parse(event.data); } catch { return; }
+        if (["response.completed", "response.failed", "response.incomplete"].includes(json?.type)) finished = true;
+        const failure = errorFromEvent(json);
+        if (failure) result.error = failure;
+        const delta = deltaFromEvent(options.endpoint, json);
+        if (delta) {
+          if (result.firstMs == null) result.firstMs = performance.now() - started;
+          result.text += delta;
+          hooks.text?.(result.text);
+        }
+        hooks.progress?.(result);
+      });
+      if (!finished && !result.error) {
+        result.error = result.text
+          ? "The stream ended before its final event"
+          : "The stream ended without any event (HTTP 200 but no output, error, or final event)";
+      }
+    } else {
+      const raw = await response.text();
+      let json = null;
+      try { json = JSON.parse(raw); log(JSON.stringify(json, null, 2)); } catch { log(raw); }
+      if (!response.ok) result.error = json?.error?.message ?? `HTTP ${response.status}`;
+      else {
+        result.text = textFromJson(options.endpoint, json);
+        result.firstMs = performance.now() - started;
+        hooks.text?.(result.text);
+      }
+    }
+  } catch (error) {
+    result.error = error.name === "AbortError" ? "Cancelled" : error.message;
+  }
+  result.totalMs = performance.now() - started;
+  return result;
+}
+
+async function readSse(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const flush = (block) => {
+    let event, data = [], comment;
+    for (const line of block.split(/\r?\n/)) {
+      if (line.startsWith(":")) comment = line.slice(1).trim();
+      else if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (data.length) onEvent({ event, data: data.join("\n") });
+    else if (comment !== undefined) onEvent({ comment });
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let match;
+    while ((match = /\r?\n\r?\n/.exec(buffer))) {
+      flush(buffer.slice(0, match.index));
+      buffer = buffer.slice(match.index + match[0].length);
+    }
+  }
+  if (buffer.trim()) flush(buffer);
+}
+
+/* ---------- single request tab ---------- */
+function requestOptions() {
+  return {
+    endpoint: radio("endpoint"),
+    model: $("modelInput").value.trim(),
+    system: $("systemInput").value.trim(),
+    user: $("userInput").value,
+    effort: $("effortInput").value,
+    stream: $("streamInput").checked
+  };
+}
+
+function setReadout(result, running) {
+  const status = $("outStatus");
+  status.textContent = result.status ?? (running ? "…" : "—");
+  status.className = result.status == null ? "" : result.status < 400 && !result.error ? "ok" : "bad";
+  $("outHeaders").textContent = ms(result.headersMs);
+  $("outFirst").textContent = ms(result.firstMs);
+  $("outTotal").textContent = running ? "running" : ms(result.totalMs);
+  $("outBeats").textContent = result.status == null ? "—" : String(result.beats);
+}
+
+async function send() {
+  const options = requestOptions();
+  if (!options.model) { toast("Enter a model"); $("modelInput").focus(); return; }
+  saveForm();
+  rememberModel(options.model);
+  state.requestController?.abort();
+  const controller = new AbortController();
+  state.requestController = controller;
+  $("sendBtn").disabled = true;
+  $("cancelBtn").disabled = false;
+  const answer = $("outAnswer");
+  answer.className = "answer";
+  answer.innerHTML = '<span class="caret"></span>';
+  const logEl = $("outLog");
+  logEl.innerHTML = "";
+  setReadout({}, true);
+  const begun = performance.now();
+  const ticker = setInterval(() => {
+    $("outTotal").textContent = ms(performance.now() - begun);
+  }, 100);
+  const result = await runRequest({ ...options, signal: controller.signal }, {
+    log: (line, cls) => {
+      logEl.insertAdjacentHTML("beforeend", `<span class="${cls ?? ""}">${escapeHtml(line)}</span>\n`);
+      logEl.scrollTop = logEl.scrollHeight;
+    },
+    text: (text) => { answer.innerHTML = escapeHtml(text) + '<span class="caret"></span>'; },
+    progress: (partial) => setReadout(partial, true)
+  });
+  clearInterval(ticker);
+  setReadout(result, false);
+  if (result.error) {
+    answer.className = "answer error";
+    answer.textContent = result.text ? `${result.text}\n\n${result.error}` : result.error;
+    $("rawBox").open = true;
+  } else {
+    answer.className = result.text ? "answer" : "answer placeholder";
+    answer.textContent = result.text || "(empty reply)";
+  }
+  if (state.requestController === controller) state.requestController = null;
+  $("sendBtn").disabled = false;
+  $("cancelBtn").disabled = true;
+}
+
+function copyCurl() {
+  const options = requestOptions();
+  const { path, body } = buildRequest(options);
+  const { target, basePath, tokenConfigured } = state.config ?? { target: "http://127.0.0.1:8080", basePath: "" };
+  const json = JSON.stringify(body).replace(/'/g, "'\\''");
+  const lines = [`curl${options.stream ? " -N" : ""} '${target}${basePath}${path}'`, `  -H 'Content-Type: application/json'`];
+  if (tokenConfigured || $("tokenInput").value.trim()) lines.push(`  -H "Authorization: Bearer $AGENT2API_TOKEN"`);
+  lines.push(`  -d '${json}'`);
+  navigator.clipboard.writeText(lines.join(" \\\n")).then(() => toast("curl command copied"), () => toast("Clipboard unavailable"));
+}
+
+/* ---------- smoke test tab ---------- */
+function fillSmokeModels(defaultsOnly) {
+  const models = baseModels().filter((id) => id.includes("/"));
+  const picked = defaultsOnly ? models.filter((id) => id.endsWith("/default")) : models;
+  $("smokeModels").value = (picked.length ? picked : models).join("\n");
+}
+
+async function runSmoke() {
+  const models = [...new Set($("smokeModels").value.split(/\s+/).map((m) => m.trim()).filter(Boolean))];
+  if (!models.length) { toast("Add at least one model"); return; }
+  saveForm();
+  const expect = $("smokeExpect").value.trim().toLowerCase();
+  const base = {
+    endpoint: radio("smokeEndpoint"), system: "", user: $("smokePrompt").value, effort: "", stream: $("smokeStream").checked
+  };
+  const tbody = $("smokeRows");
+  tbody.innerHTML = models.map((model, index) => `
+    <tr id="smoke-${index}">
+      <td><span class="verdict"><span class="led"></span><span class="v">queued</span></span></td>
+      <td class="model">${escapeHtml(model)}</td>
+      <td class="num http">—</td>
+      <td class="num time">—</td>
+      <td class="out"></td>
+    </tr>`).join("");
+  $("smokeRun").disabled = true;
+  $("smokeStop").disabled = false;
+  state.smokeControllers = [];
+  const tally = { pass: 0, fail: 0, mismatch: 0 };
+  const summary = () => {
+    $("smokeSummary").innerHTML = `<b>${tally.pass}</b> pass · <b>${tally.mismatch}</b> mismatch · <b>${tally.fail}</b> fail · ${models.length} total`;
+  };
+  summary();
+
+  const runOne = async (model, index) => {
+    const row = $(`smoke-${index}`);
+    const led = row.querySelector(".led");
+    const verdict = row.querySelector(".v");
+    const time = row.querySelector(".time");
+    const controller = new AbortController();
+    state.smokeControllers.push(controller);
+    led.dataset.state = "run";
+    verdict.textContent = "running";
+    const begun = performance.now();
+    const ticker = setInterval(() => { time.textContent = ms(performance.now() - begun); }, 200);
+    const result = await runRequest({ ...base, model, signal: controller.signal });
+    clearInterval(ticker);
+    row.querySelector(".http").textContent = result.status ?? "—";
+    time.textContent = ms(result.totalMs);
+    const out = row.querySelector(".out");
+    if (result.error) {
+      led.dataset.state = "bad"; verdict.textContent = "fail"; tally.fail++;
+      out.className = "out bad"; out.textContent = result.error;
+    } else if (expect && !result.text.toLowerCase().includes(expect)) {
+      led.dataset.state = "warn"; verdict.textContent = "mismatch"; tally.mismatch++;
+      out.className = "out"; out.textContent = result.text || "(empty reply)";
+    } else {
+      led.dataset.state = "ok"; verdict.textContent = "pass"; tally.pass++;
+      out.className = "out"; out.textContent = result.text;
+    }
+    summary();
+  };
+
+  if ($("smokeParallel").checked) await Promise.all(models.map(runOne));
+  else for (const [index, model] of models.entries()) {
+    if (state.smokeControllers.some((c) => c.signal.aborted)) break;
+    await runOne(model, index);
+  }
+  $("smokeRun").disabled = false;
+  $("smokeStop").disabled = true;
+}
+
+/* ---------- form memory ---------- */
+const remembered = ["modelInput", "systemInput", "userInput", "effortInput", "smokePrompt", "smokeExpect", "smokeModels"];
+const rememberedChecks = ["streamInput", "smokeStream", "smokeParallel"];
+function saveForm() {
+  const form = {};
+  for (const id of remembered) form[id] = $(id).value;
+  for (const id of rememberedChecks) form[id] = $(id).checked;
+  form.endpoint = radio("endpoint");
+  form.smokeEndpoint = radio("smokeEndpoint");
+  store.set("form", form);
+}
+function restoreForm() {
+  const form = store.get("form", null);
+  if (!form) return;
+  for (const id of remembered) if (typeof form[id] === "string") $(id).value = form[id];
+  // The effort list is drawn once the models load, so keep the choice until then.
+  if (typeof form.effortInput === "string") state.effort = form.effortInput;
+  for (const id of rememberedChecks) if (typeof form[id] === "boolean") $(id).checked = form[id];
+  for (const name of ["endpoint", "smokeEndpoint"]) {
+    const input = document.querySelector(`input[name="${name}"][value="${form[name]}"]`);
+    if (input) input.checked = true;
+  }
+}
+
+/* ---------- wiring ---------- */
+function selectTab(which) {
+  const request = which === "request";
+  $("tabRequest").setAttribute("aria-selected", String(request));
+  $("tabSmoke").setAttribute("aria-selected", String(!request));
+  $("panelRequest").hidden = !request;
+  $("panelSmoke").hidden = request;
+  store.set("tab", which);
+}
+$("tabRequest").addEventListener("click", () => selectTab("request"));
+$("tabSmoke").addEventListener("click", () => selectTab("smoke"));
+$("sendBtn").addEventListener("click", send);
+$("cancelBtn").addEventListener("click", () => state.requestController?.abort());
+$("curlBtn").addEventListener("click", copyCurl);
+$("refreshModels").addEventListener("click", loadModels);
+$("smokeRun").addEventListener("click", runSmoke);
+$("smokeStop").addEventListener("click", () => state.smokeControllers.forEach((c) => c.abort()));
+$("smokeFill").addEventListener("click", () => fillSmokeModels(false));
+$("modelList").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-model]");
+  if (!button) return;
+  useModel(button.dataset.model);
+  selectTab("request");
+  $("userInput").focus();
+});
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !$("panelRequest").hidden && !$("sendBtn").disabled) {
+    event.preventDefault();
+    send();
+  }
+});
+$("modelInput").addEventListener("input", () => { renderEfforts($("modelInput").value.trim()); renderRecent(); });
+$("effortInput").addEventListener("change", () => { state.effort = $("effortInput").value; saveForm(); });
+$("providerSelect").addEventListener("change", () => {
+  const provider = $("providerSelect").value;
+  if (provider === CUSTOM) {
+    $("modelSelectWrap").hidden = true;
+    $("modelInput").hidden = false;
+    $("modelInput").select();
+    $("modelInput").focus();
+    return;
+  }
+  const model = preferredModel(provider);
+  if (model) useModel(model);
+});
+$("modelSelect").addEventListener("change", () => useModel($("modelSelect").value));
+$("tokenInput").addEventListener("change", () => { checkHealth(); loadModels(); });
+
+restoreForm();
+selectTab(store.get("tab", "request"));
+loadConfig().then(() => { checkHealth(); loadModels(); }).catch(() => {
+  $("healthLed").dataset.state = "bad";
+  $("healthReading").textContent = "bench unreachable";
+});
+setInterval(checkHealth, 5000);
+</script>
+</body>
+</html>
